@@ -2,6 +2,7 @@
 
 **Real-time meeting transcription, translation, and AI assistant for Windows.**
 
+[![Download installer](https://img.shields.io/badge/Download-OneTrueDutchie_0.5.0_x64--setup.exe-0078d4?style=for-the-badge&logo=windows)](https://github.com/pawan0305/onetruedutchie-windows/releases/download/v0.5.0/OneTrueDutchie_0.5.0_x64-setup.exe)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=for-the-badge&logo=windows)](#prerequisites)
 
@@ -29,11 +30,13 @@ Claude (or any OpenAI-compatible model) can write. The name stuck.
 
 ## Quick start
 
-**Install:**
+**Download (Windows 10/11, x64):**
 
-Build the installer (see [Build from source](#build-from-source)), then run
-`src-tauri\target\release\bundle\nsis\OneTrueDutchie_0.5.0_x64-setup.exe`.
-It installs per-user (no admin prompt) and adds a Start-menu entry.
+→ **[OneTrueDutchie_0.5.0_x64-setup.exe](https://github.com/pawan0305/onetruedutchie-windows/releases/download/v0.5.0/OneTrueDutchie_0.5.0_x64-setup.exe)** — NSIS installer (~3.4 MB · per-user · no admin prompt · adds a Start-menu entry)
+
+Prefer no install? Grab the standalone **[OneTrueDutchie_0.5.0_x64-portable.exe](https://github.com/pawan0305/onetruedutchie-windows/releases/download/v0.5.0/OneTrueDutchie_0.5.0_x64-portable.exe)** (~15 MB) and just run it.
+
+Both need the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (preinstalled on Windows 11; the installer downloads the bootstrapper on Windows 10 if missing).
 
 **Build from source:**
 
