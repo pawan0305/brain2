@@ -1,0 +1,40 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# TypeScript build artifacts
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Tauri
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Env
+.env
+.env.local
+
+# Secrets — defense in depth. The app stores keys in
+# %APPDATA%\com.onetruedutchie.app\keys.json, never inside the repo.
+# These patterns block accidental commits if someone copies that file
+# or generates one in the project dir.
+keys.json
+*.key
+*.pem
+*.p12
+**/secrets/
+*.secret

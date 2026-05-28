@@ -1,0 +1,390 @@
+import { useState } from "react";
+import { api } from "../lib/tauri";
+import type { SettingsView } from "../lib/types";
+
+// Curated short list of common Claude output languages. Users can type
+// anything they want via the "Other…" option, but these cover ~95% of
+// cases without scrolling through a hundred locales.
+const LANG_OPTIONS = [
+  "English",
+  "Dutch",
+  "Spanish",
+  "French",
+  "German",
+  "Italian",
+  "Portuguese",
+  "Polish",
+  "Russian",
+  "Ukrainian",
+  "Turkish",
+  "Arabic",
+  "Hindi",
+  "Chinese (Simplified)",
+  "Chinese (Traditional)",
+  "Japanese",
+  "Korean",
+  "Indonesian",
+  "Vietnamese",
+  "Thai",
+];
+
+// Source language = the Deepgram `language` param. "multi" auto-detects
+// across Nova-3's multilingual set; a specific code locks to one language
+// (more accurate when you know what's being spoken). Label → code.
+const SOURCE_LANG_OPTIONS: { label: string; code: string }[] = [
+  { label: "Auto-detect (multilingual)", code: "multi" },
+  { label: "Dutch", code: "nl" },
+  { label: "Flemish (Belgian Dutch)", code: "nl-BE" },
+  { label: "English", code: "en" },
+  { label: "German", code: "de" },
+  { label: "French", code: "fr" },
+  { label: "Spanish", code: "es" },
+  { label: "Italian", code: "it" },
+  { label: "Portuguese", code: "pt" },
+  { label: "Russian", code: "ru" },
+  { label: "Hindi", code: "hi" },
+  { label: "Japanese", code: "ja" },
+];
+
+interface Props {
+  settings: SettingsView | null;
+  onSave: (deepgram: string, anthropic: string) => Promise<void> | void;
+  onSettingsChanged: (s: SettingsView) => void;
+  onClose: () => void;
+  onError: (msg: string) => void;
+}
+
+export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, onError }: Props) {
+  const [dg, setDg] = useState("");
+  const [an, setAn] = useState("");
+  const [saving, setSaving] = useState(false);
+  // Vocab state — one term per line in the textarea.
+  const [vocabText, setVocabText] = useState<string>(
+    (settings?.keywords ?? []).join("\n"),
+  );
+  const [savingVocab, setSavingVocab] = useState(false);
+  // Target language for Claude (translation/summary/chat). Source is
+  // auto-detected by Deepgram.
+  const [targetLang, setTargetLang] = useState<string>(
+    settings?.target_language || "English",
+  );
+  const [savingLang, setSavingLang] = useState(false);
+  // Source language (Deepgram code). "multi" = auto-detect.
+  const [sourceLang, setSourceLang] = useState<string>(
+    settings?.source_language || "multi",
+  );
+
+  const saveSourceLang = async (code: string) => {
+    setSourceLang(code);
+    try {
+      const s = await api.setSourceLanguage(code);
+      onSettingsChanged(s);
+    } catch (err) {
+      onError(`source language: ${err}`);
+    }
+  };
+
+  // LLM backend. "anthropic" or "openai" (= any OpenAI-compatible endpoint
+  // — OpenAI itself, Ollama, LM Studio, vLLM, OpenRouter, etc.).
+  const [llmProvider, setLlmProvider] = useState<string>(
+    settings?.llm_provider || "anthropic",
+  );
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [openaiBase, setOpenaiBase] = useState<string>(
+    settings?.openai_base_url || "",
+  );
+  const [openaiModel, setOpenaiModel] = useState<string>(
+    settings?.openai_model || "",
+  );
+  const [savingOpenai, setSavingOpenai] = useState(false);
+
+  const saveLlmProvider = async (next: "anthropic" | "openai") => {
+    setLlmProvider(next);
+    try {
+      const s = await api.setLlmProvider(next);
+      onSettingsChanged(s);
+    } catch (err) {
+      onError(`llm provider: ${err}`);
+    }
+  };
+
+  const saveOpenai = async () => {
+    setSavingOpenai(true);
+    try {
+      const s = await api.setOpenAIConfig({
+        apiKey: openaiKey || undefined, // undefined = leave existing untouched
+        baseUrl: openaiBase,
+        model: openaiModel,
+      });
+      onSettingsChanged(s);
+      setOpenaiKey(""); // clear the password field after save
+    } catch (err) {
+      onError(`openai config: ${err}`);
+    } finally {
+      setSavingOpenai(false);
+    }
+  };
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await onSave(dg, an);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveLang = async (next: string) => {
+    setTargetLang(next);
+    setSavingLang(true);
+    try {
+      const s = await api.setTargetLanguage(next);
+      onSettingsChanged(s);
+    } catch (err) {
+      onError(`language: ${err}`);
+    } finally {
+      setSavingLang(false);
+    }
+  };
+
+  const saveVocab = async () => {
+    setSavingVocab(true);
+    try {
+      const words = vocabText
+        .split("\n")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      const s = await api.setVocab(words);
+      onSettingsChanged(s);
+    } catch (err) {
+      onError(`vocab: ${err}`);
+    } finally {
+      setSavingVocab(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Settings</h2>
+        <p className="muted">
+          API keys live in <code>%APPDATA%\com.onetruedutchie.app</code>; nothing
+          leaves your machine except provider API requests.
+        </p>
+
+        <label>
+          <span>
+            Deepgram API key
+            {settings?.deepgram_set && (
+              <em className="muted"> (currently set, leave blank to keep)</em>
+            )}
+          </span>
+          <input
+            type="password"
+            value={dg}
+            onChange={(e) => setDg(e.target.value)}
+            placeholder="dg_..."
+            autoComplete="off"
+          />
+          <small>
+            <a
+              href="https://console.deepgram.com/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              console.deepgram.com
+            </a>{" "}
+            · ~$0.0043/min for Nova-3 streaming
+          </small>
+        </label>
+
+        <label>
+          <span>
+            Anthropic API key
+            {settings?.anthropic_set && (
+              <em className="muted"> (currently set, leave blank to keep)</em>
+            )}
+          </span>
+          <input
+            type="password"
+            value={an}
+            onChange={(e) => setAn(e.target.value)}
+            placeholder="sk-ant-..."
+            autoComplete="off"
+          />
+          <small>
+            <a
+              href="https://console.anthropic.com/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              console.anthropic.com
+            </a>{" "}
+            · Claude Haiku 4.5 ($1/MTok in, $5/MTok out)
+          </small>
+        </label>
+
+        <label>
+          <span>
+            LLM backend
+            <em className="muted"> (for translation, summary, chat)</em>
+          </span>
+          <select
+            value={llmProvider}
+            onChange={(e) =>
+              saveLlmProvider(e.target.value as "anthropic" | "openai")
+            }
+          >
+            <option value="anthropic">Anthropic (Claude Haiku 4.5)</option>
+            <option value="openai">OpenAI-compatible (OpenAI, Ollama, LM Studio…)</option>
+          </select>
+          <small>
+            Anthropic = cloud, prompt caching, ~$0.07/hr of meeting.
+            OpenAI-compatible = bring your own — point at OpenAI, or a
+            local model on localhost for $0 LLM cost.
+          </small>
+        </label>
+
+        {llmProvider === "openai" && (
+          <label>
+            <span>
+              OpenAI-compatible endpoint
+              {settings?.openai_set && (
+                <em className="muted"> (key currently set, leave blank to keep)</em>
+              )}
+            </span>
+            <input
+              type="text"
+              value={openaiBase}
+              onChange={(e) => setOpenaiBase(e.target.value)}
+              placeholder="https://api.openai.com/v1  ·  http://localhost:11434/v1 (Ollama)"
+              autoComplete="off"
+            />
+            <input
+              type="text"
+              value={openaiModel}
+              onChange={(e) => setOpenaiModel(e.target.value)}
+              placeholder="gpt-4o-mini  ·  llama3.1:8b  ·  qwen2.5:14b"
+              autoComplete="off"
+              style={{ marginTop: 6 }}
+            />
+            <input
+              type="password"
+              value={openaiKey}
+              onChange={(e) => setOpenaiKey(e.target.value)}
+              placeholder="API key (leave blank for a local model without auth)"
+              autoComplete="off"
+              style={{ marginTop: 6 }}
+            />
+            <small>
+              For Ollama: base = <code>http://localhost:11434/v1</code>,
+              model = whatever you have pulled, key blank.
+              For OpenAI: base = <code>https://api.openai.com/v1</code>,
+              model = <code>gpt-4o-mini</code>, key from{" "}
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">
+                platform.openai.com
+              </a>
+              .
+            </small>
+            <div style={{ marginTop: 6 }}>
+              <button className="ghost" onClick={saveOpenai} disabled={savingOpenai}>
+                {savingOpenai ? "Saving…" : "Save endpoint"}
+              </button>
+            </div>
+          </label>
+        )}
+
+        <label>
+          <span>
+            Source language
+            <em className="muted"> (what's being spoken)</em>
+          </span>
+          <select
+            value={sourceLang}
+            onChange={(e) => saveSourceLang(e.target.value)}
+          >
+            {SOURCE_LANG_OPTIONS.map((o) => (
+              <option key={o.code} value={o.code}>{o.label}</option>
+            ))}
+          </select>
+          <small>
+            Locking to one language (e.g. Dutch) is noticeably more
+            accurate than auto-detect when you know what's being spoken.
+            Use auto-detect for mixed-language calls. Takes effect on the
+            next meeting.
+          </small>
+        </label>
+
+        <label>
+          <span>
+            Target language
+            <em className="muted"> (translation, summary, chat output)</em>
+          </span>
+          <select
+            value={LANG_OPTIONS.includes(targetLang) ? targetLang : "__custom"}
+            onChange={(e) => {
+              if (e.target.value === "__custom") return;
+              saveLang(e.target.value);
+            }}
+            disabled={savingLang}
+          >
+            {LANG_OPTIONS.map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+            <option value="__custom">Other…</option>
+          </select>
+          {(!LANG_OPTIONS.includes(targetLang) || targetLang === "") && (
+            <input
+              type="text"
+              value={targetLang}
+              onChange={(e) => setTargetLang(e.target.value)}
+              onBlur={() => saveLang(targetLang)}
+              placeholder="e.g. Vietnamese, Brazilian Portuguese"
+              style={{ marginTop: 6 }}
+              autoComplete="off"
+            />
+          )}
+          <small>
+            Source language is auto-detected. This sets the language Claude
+            translates / summarises into. Takes effect on the next call.
+          </small>
+        </label>
+
+        <label>
+          <span>
+            Custom vocabulary
+            <em className="muted"> (one word/phrase per line)</em>
+          </span>
+          <textarea
+            value={vocabText}
+            onChange={(e) => setVocabText(e.target.value)}
+            placeholder={"names, jargon, or words Deepgram keeps mishearing\ne.g.\nKlaas\nDigiD\nABN Amro"}
+            rows={5}
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <small>
+            Boosts these terms in Deepgram (Nova-3 <code>keyterm</code>). Takes
+            effect on the next meeting.
+          </small>
+          <div style={{ marginTop: 6 }}>
+            <button
+              className="ghost"
+              onClick={saveVocab}
+              disabled={savingVocab}
+            >
+              {savingVocab ? "Saving…" : "Save vocabulary"}
+            </button>
+          </div>
+        </label>
+
+        <div className="modal-actions">
+          <button onClick={onClose}>Close</button>
+          <button className="primary" onClick={submit} disabled={saving}>
+            {saving ? "Saving…" : "Save keys"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

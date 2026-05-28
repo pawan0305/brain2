@@ -1,0 +1,127 @@
+html, body, #overlay-root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Fully transparent shell — only the per-line highlights are visible. */
+.overlay-shell {
+  --overlay-font-size: 24px;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  position: relative;
+  cursor: grab;
+}
+.overlay-shell:active { cursor: grabbing; }
+
+.overlay-lines {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.overlay-line {
+  font-size: var(--overlay-font-size);
+  line-height: 1.45;
+}
+.overlay-line.pending { opacity: 0.7; font-style: italic; }
+.overlay-line.muted  { opacity: 0.55; font-style: italic; }
+
+/* Each line gets its own block so NL+EN stack vertically. */
+.line { display: block; margin-bottom: 4px; }
+.line:last-child { margin-bottom: 0; }
+
+/* `display: inline` + box-decoration-break: clone gives multi-line text
+   a continuous rounded "marker" highlight that hugs each visual line —
+   the YouTube / movie-subtitle look. */
+.hl {
+  display: inline;
+  background: rgba(0, 0, 0, 0.78);
+  padding: 3px 9px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.hl.nl { color: #ffb380; }
+.hl.en { color: #ffffff; }
+.hl.muted { color: rgba(255, 255, 255, 0.65); background: rgba(0, 0, 0, 0.55); }
+
+.resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  background:
+    linear-gradient(135deg,
+      transparent 0%, transparent 55%,
+      rgba(255, 255, 255, 0.6) 55%, rgba(255, 255, 255, 0.6) 65%,
+      transparent 65%, transparent 75%,
+      rgba(255, 255, 255, 0.6) 75%, rgba(255, 255, 255, 0.6) 85%,
+      transparent 85%);
+  /* Hide the resize grip when the overlay is locked (click-through):
+     the user can't grab it anyway, and seeing the artifact through Teams
+     is ugly. The .unlocked class is added by JS via the lock state. */
+}
+.overlay-shell:not(.unlocked) .resize-handle { display: none; }
+
+/* When unlocked: brighter dashed outline so the user can find where to grab
+   even though the rest of the shell is transparent. */
+.overlay-shell.unlocked {
+  outline: 2px dashed rgba(255, 200, 100, 0.55);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+/* Floating control strip pinned to the top-right when unlocked. Pointer
+   events stop here so clicks hit the buttons instead of starting a
+   window drag. */
+.overlay-controls {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+  background: rgba(20, 20, 24, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 3px;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.ovc-btn {
+  background: transparent;
+  border: 0;
+  color: #fff;
+  font: 500 11px -apple-system, system-ui, sans-serif;
+  padding: 4px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ovc-btn:hover { background: rgba(255, 255, 255, 0.15); }
+.ovc-btn:active { background: rgba(255, 255, 255, 0.28); }
