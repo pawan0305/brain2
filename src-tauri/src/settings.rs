@@ -12,6 +12,12 @@ pub struct ApiKeys {
     /// top bar — for English meetings where translation is unnecessary.
     #[serde(default = "default_translate")]
     pub translate: bool,
+    /// Capture the microphone (your own voice) alongside system audio. Turn
+    /// off when listening on speakers — there the mic re-captures the system
+    /// audio coming out of the speakers, which doubles the transcript. On
+    /// headphones, leave it on. Default true.
+    #[serde(default = "default_capture_mic")]
+    pub capture_mic: bool,
     /// Subtitle overlay mode: "off" | "dual" (NL+EN) | "en" (EN only).
     #[serde(default = "default_overlay")]
     pub overlay_mode: String,
@@ -76,6 +82,7 @@ impl Default for ApiKeys {
             deepgram: None,
             anthropic: None,
             translate: default_translate(),
+            capture_mic: default_capture_mic(),
             overlay_mode: default_overlay(),
             overlay_font_size: default_overlay_size(),
             overlay_locked: default_overlay_locked(),
@@ -95,6 +102,7 @@ impl Default for ApiKeys {
 }
 
 fn default_translate() -> bool { true }
+fn default_capture_mic() -> bool { true }
 fn default_overlay() -> String { "off".to_string() }
 fn default_overlay_size() -> u32 { 24 }
 fn default_overlay_locked() -> bool { true }
@@ -107,6 +115,7 @@ pub struct SettingsView {
     pub deepgram_set: bool,
     pub anthropic_set: bool,
     pub translate: bool,
+    pub capture_mic: bool,
     pub overlay_mode: String,
     pub overlay_font_size: u32,
     pub overlay_locked: bool,
@@ -147,6 +156,7 @@ pub fn settings_view() -> Result<SettingsView> {
         deepgram_set: keys.deepgram.as_deref().map(|s| !s.is_empty()).unwrap_or(false),
         anthropic_set: keys.anthropic.as_deref().map(|s| !s.is_empty()).unwrap_or(false),
         translate: keys.translate,
+        capture_mic: keys.capture_mic,
         overlay_mode: keys.overlay_mode.clone(),
         overlay_font_size: keys.overlay_font_size,
         overlay_locked: keys.overlay_locked,
@@ -316,6 +326,16 @@ pub fn set_overlay_font_size(size: u32) -> Result<()> {
 pub fn set_overlay_locked(locked: bool) -> Result<()> {
     let mut keys = read_keys().unwrap_or_default();
     keys.overlay_locked = locked;
+    write_keys_back(&keys)
+}
+
+pub fn read_capture_mic() -> bool {
+    read_keys().map(|k| k.capture_mic).unwrap_or(true)
+}
+
+pub fn set_capture_mic(enabled: bool) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    keys.capture_mic = enabled;
     write_keys_back(&keys)
 }
 

@@ -90,6 +90,7 @@ pub fn run() {
             commands::get_settings,
             commands::set_api_keys,
             commands::set_translate_enabled,
+            commands::set_capture_mic,
             commands::set_overlay_mode,
             commands::set_overlay_font_size,
             commands::set_overlay_locked,

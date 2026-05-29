@@ -74,6 +74,22 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
     settings?.source_language || "multi",
   );
 
+  // Capture the mic (your own voice) alongside system audio. Off = system
+  // audio only — the fix for speaker users, where the mic re-captures the
+  // speaker output and the transcript comes out doubled.
+  const [captureMic, setCaptureMic] = useState<boolean>(
+    settings?.capture_mic ?? true,
+  );
+  const saveCaptureMic = async (next: boolean) => {
+    setCaptureMic(next);
+    try {
+      const s = await api.setCaptureMic(next);
+      onSettingsChanged(s);
+    } catch (err) {
+      onError(`capture mic: ${err}`);
+    }
+  };
+
   const saveSourceLang = async (code: string) => {
     setSourceLang(code);
     try {
@@ -293,6 +309,26 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
             </div>
           </label>
         )}
+
+        <label>
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={captureMic}
+              onChange={(e) => saveCaptureMic(e.target.checked)}
+              style={{ width: "auto", margin: 0 }}
+            />
+            Capture microphone
+            <em className="muted"> (your own voice)</em>
+          </span>
+          <small>
+            Mixes your mic into the transcript along with the system audio.{" "}
+            <strong>Turn this off if you listen on speakers</strong> — the mic
+            also picks up the system audio coming out of the speakers, so
+            everything gets transcribed twice. On headphones, leave it on.
+            Takes effect on the next meeting.
+          </small>
+        </label>
 
         <label>
           <span>

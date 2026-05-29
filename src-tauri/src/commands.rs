@@ -50,6 +50,17 @@ pub async fn set_translate_enabled(enabled: bool) -> Result<SettingsView, String
     settings::settings_view().map_err(|e| e.to_string())
 }
 
+/// Toggle microphone capture. When off, only system audio (WASAPI loopback)
+/// is transcribed — use this on speakers, where the mic also picks up the
+/// system audio from the speakers and the transcript comes out doubled. On
+/// headphones, leave it on to capture your own voice too. Applies on the next
+/// meeting (capture threads are spawned at meeting start).
+#[tauri::command]
+pub async fn set_capture_mic(enabled: bool) -> Result<SettingsView, String> {
+    settings::set_capture_mic(enabled).map_err(|e| e.to_string())?;
+    settings::settings_view().map_err(|e| e.to_string())
+}
+
 /// Show / hide / change the subtitle overlay window. Modes: "off", "dual",
 /// "en". Persists across restarts. The overlay webview listens to the
 /// `overlay:mode` event for live mode switching while it's already visible.
@@ -956,10 +967,14 @@ async fn run_meeting(
     let cancel = handle.cancel.clone();
     let meeting = handle.meeting.clone();
 
-    // 1. Audio sidecar. Capture mic + system audio. The Swift sidecar mixes
-    //    them sample-aligned so when both pick up the same speech (e.g. mic
-    //    sidetone bleeding into system loopback) we get one phrase, not two.
-    let audio_rx = audio::start_capture(&state.app_handle, cancel.clone(), true).await?;
+    // 1. Audio capture. System audio (WASAPI loopback) is always captured;
+    //    the mic is optional (capture_mic setting). Both are mixed
+    //    sample-aligned so overlapping speech is summed, not duplicated.
+    //    Mic-off is the fix for speaker users, where the mic also picks up the
+    //    system audio from the speakers and doubles the transcript.
+    let include_mic = settings::read_capture_mic();
+    let audio_rx =
+        audio::start_capture(&state.app_handle, cancel.clone(), include_mic).await?;
 
     // 2. Broadcast audio so we can re-subscribe a fresh Deepgram session
     //    after a disconnect without losing the audio sidecar. When paused,

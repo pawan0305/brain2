@@ -15,6 +15,8 @@ export const api = {
     invoke<SettingsView>("set_api_keys", { deepgram, anthropic }),
   setTranslateEnabled: (enabled: boolean) =>
     invoke<SettingsView>("set_translate_enabled", { enabled }),
+  setCaptureMic: (enabled: boolean) =>
+    invoke<SettingsView>("set_capture_mic", { enabled }),
   setOverlayMode: (mode: "off" | "dual" | "en") =>
     invoke<SettingsView>("set_overlay_mode", { mode }),
   setOverlayFontSize: (size: number) =>

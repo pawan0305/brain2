@@ -3,6 +3,10 @@ dist/
 dist-ssr/
 *.local
 
+# scratch screenshots from manual testing
+_screenshot_*.png
+_shot_*.png
+
 # TypeScript build artifacts
 *.tsbuildinfo
 vite.config.js

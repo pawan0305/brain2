@@ -40,6 +40,7 @@ export interface SettingsView {
   deepgram_set: boolean;
   anthropic_set: boolean;
   translate: boolean;
+  capture_mic: boolean;
   overlay_mode: string; // "off" | "dual" | "en"
   overlay_font_size: number;
   overlay_locked: boolean;
