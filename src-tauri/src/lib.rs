@@ -1,7 +1,9 @@
 mod anthropic;
 mod audio;
+mod brain;
 mod commands;
 mod deepgram;
+mod factory;
 mod forge;
 mod llm;
 mod openai;
@@ -14,6 +16,8 @@ use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
+use crate::brain::BrainEngine;
+use crate::factory::FactoryConnector;
 use crate::forge::ForgeState;
 use crate::state::AppState;
 
@@ -62,17 +66,20 @@ pub fn run() {
             let state = AppState::new(app_handle.clone(), data_dir.clone());
             app.manage(Arc::new(state));
 
-            let forge = ForgeState::new(app_handle, data_dir);
+            let forge = ForgeState::new(app_handle.clone(), data_dir.clone());
             app.manage(Arc::new(forge));
 
-            // Apply persisted overlay mode + lock. If the user had subtitles
-            // on when they last quit, show the overlay window now and apply
-            // the click-through state.
+            let brain = BrainEngine::new(app_handle.clone(), data_dir.clone());
+            app.manage(Arc::new(brain));
+
+            let factory = FactoryConnector::new(app_handle.clone(), data_dir);
+            app.manage(Arc::new(factory));
+
+            // Apply persisted overlay mode + lock.
             let mode = settings::read_overlay_mode();
             let locked = settings::read_overlay_locked();
             let (gx, gy, gw, gh) = settings::read_overlay_geometry();
             if let Some(win) = app.get_webview_window("overlay") {
-                // Restore saved position/size before showing.
                 if let (Some(w), Some(h)) = (gw, gh) {
                     let _ = win.set_size(tauri::PhysicalSize::new(w, h));
                 }
@@ -123,7 +130,7 @@ pub fn run() {
             commands::ask_question,
             commands::regenerate_summary,
             commands::set_meeting_title,
-            // Forge commands
+            // Forge
             forge::forge_init,
             forge::forge_status,
             forge::forge_chat,
@@ -133,6 +140,18 @@ pub fn run() {
             forge::forge_build,
             forge::forge_install,
             forge::forge_rollback,
+            // Brain
+            brain::brain_status,
+            brain::brain_toggle,
+            brain::brain_mark_action_done,
+            brain::brain_wrap_up,
+            // Factory
+            factory::factory_status,
+            factory::factory_ping,
+            factory::factory_send_metrics,
+            factory::factory_report_error,
+            factory::factory_add_idea,
+            factory::factory_check_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
