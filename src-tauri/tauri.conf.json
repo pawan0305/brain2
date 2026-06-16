@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OneTrueDutchie",
-  "version": "0.5.1",
-  "identifier": "com.onetruedutchie.app",
+  "productName": "Brain2",
+  "version": "0.6.0",
+  "identifier": "com.brain2.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "OneTrueDutchie",
+        "title": "Brain2",
         "width": 1280,
         "height": 820,
         "minWidth": 960,
@@ -24,7 +24,7 @@
       {
         "label": "overlay",
         "url": "overlay.html",
-        "title": "Subtitles",
+        "title": "Brain2 Subtitles",
         "width": 900,
         "height": 200,
         "minWidth": 320,

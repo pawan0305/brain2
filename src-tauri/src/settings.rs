@@ -128,7 +128,7 @@ pub struct SettingsView {
     pub openai_model: String,
 }
 
-/// %APPDATA%\com.onetruedutchie.app\keys.json — the same directory Tauri's
+/// %APPDATA%\com.brain2.app\keys.json — the same directory Tauri's
 /// `app_data_dir()` resolves to on Windows, so keys.json sits alongside the
 /// `meetings\` folder.
 fn keys_path() -> PathBuf {

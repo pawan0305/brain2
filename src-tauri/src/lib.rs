@@ -15,26 +15,26 @@ use tracing_subscriber::EnvFilter;
 
 use crate::state::AppState;
 
-/// Log to %LOCALAPPDATA%\com.onetruedutchie.app\logs\onetrue.log so the
+/// Log to %LOCALAPPDATA%\com.brain2.app\logs\brain2.log so the
 /// installed app has somewhere to write tracing output (the release build runs
 /// with the `windows` subsystem and has no attached console).
 fn open_log_file() -> Option<std::fs::File> {
     let base = std::env::var("LOCALAPPDATA").ok()?;
     let dir = std::path::PathBuf::from(base)
-        .join("com.onetruedutchie.app")
+        .join("com.brain2.app")
         .join("logs");
     std::fs::create_dir_all(&dir).ok()?;
     std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(dir.join("onetrue.log"))
+        .open(dir.join("brain2.log"))
         .ok()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,onetruedutchie_lib=debug"));
+        .unwrap_or_else(|_| EnvFilter::new("info,brain2_lib=debug"));
     if let Some(file) = open_log_file() {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(env_filter)
@@ -46,7 +46,7 @@ pub fn run() {
             .with_env_filter(env_filter)
             .try_init();
     }
-    tracing::info!("OneTrueDutchie starting");
+    tracing::info!("Brain2 starting");
 
     tauri::Builder::default()
         .setup(|app| {

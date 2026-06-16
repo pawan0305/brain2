@@ -1,12 +1,12 @@
 [package]
-name = "onetruedutchie"
-version = "0.1.0"
-description = "Live transcription, translation, and meeting assistant for Windows."
+name = "brain2"
+version = "0.6.0"
+description = "Brain2 — Your 2nd brain during conversations. Live transcription, proactive AI co-pilot, self-improving desktop app."
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "onetruedutchie_lib"
+name = "brain2_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
