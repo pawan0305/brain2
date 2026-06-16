@@ -2,6 +2,7 @@ mod anthropic;
 mod audio;
 mod commands;
 mod deepgram;
+mod forge;
 mod llm;
 mod openai;
 mod settings;
@@ -13,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;
 
+use crate::forge::ForgeState;
 use crate::state::AppState;
 
 /// Log to %LOCALAPPDATA%\com.brain2.app\logs\brain2.log so the
@@ -57,8 +59,11 @@ pub fn run() {
                 .expect("could not resolve app data dir");
             std::fs::create_dir_all(&data_dir).ok();
 
-            let state = AppState::new(app_handle, data_dir);
+            let state = AppState::new(app_handle.clone(), data_dir.clone());
             app.manage(Arc::new(state));
+
+            let forge = ForgeState::new(app_handle, data_dir);
+            app.manage(Arc::new(forge));
 
             // Apply persisted overlay mode + lock. If the user had subtitles
             // on when they last quit, show the overlay window now and apply
@@ -118,6 +123,16 @@ pub fn run() {
             commands::ask_question,
             commands::regenerate_summary,
             commands::set_meeting_title,
+            // Forge commands
+            forge::forge_init,
+            forge::forge_status,
+            forge::forge_chat,
+            forge::forge_diff,
+            forge::forge_approve,
+            forge::forge_reject,
+            forge::forge_build,
+            forge::forge_install,
+            forge::forge_rollback,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

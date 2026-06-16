@@ -6,6 +6,7 @@ import { TranscriptPane } from "./components/TranscriptPane";
 import { SummaryPane } from "./components/SummaryPane";
 import { ChatPane } from "./components/ChatPane";
 import { NotesPane } from "./components/NotesPane";
+import { ForgePane } from "./components/ForgePane";
 import { SettingsModal } from "./components/SettingsModal";
 import { HistoryDrawer } from "./components/HistoryDrawer";
 import { Splitter } from "./components/Splitter";
@@ -57,6 +58,8 @@ export function App() {
     usePersistedBool("paneCollapsed.chat", false);
   const [notesCollapsed, setNotesCollapsed] =
     usePersistedBool("paneCollapsed.notes", true);
+  const [forgeCollapsed, setForgeCollapsed] =
+    usePersistedBool("paneCollapsed.forge", false);
 
   const meetingRef = useRef<Meeting | null>(null);
   meetingRef.current = meeting;
@@ -406,6 +409,17 @@ export function App() {
               />
             ),
           },
+          {
+            id: "forge",
+            title: "Forge",
+            collapsed: forgeCollapsed,
+            onToggle: () => setForgeCollapsed(!forgeCollapsed),
+            content: (
+              <ForgePane
+                onCollapse={() => setForgeCollapsed(true)}
+              />
+            ),
+          },
         ]}
       />
       {errors.length > 0 && (
@@ -518,7 +532,7 @@ function CollapsedStrip({ title, onExpand }: { title: string; onExpand: () => vo
 }
 
 interface PaneSpec {
-  id: "transcript" | "summary" | "chat" | "notes";
+  id: "transcript" | "summary" | "chat" | "notes" | "forge";
   title: string;
   content: React.ReactNode;
   collapsed: boolean;
@@ -535,18 +549,21 @@ function ResizableMain({ panes }: { panes: PaneSpec[] }) {
     summary: summaryW,
     chat: chatW,
     notes: 0, // last expanded pane absorbs the rest
+    forge: 0,
   };
   const setWidth: Record<PaneSpec["id"], (n: number) => void> = {
     transcript: setTranscriptW,
     summary: setSummaryW,
     chat: setChatW,
     notes: () => {},
+    forge: () => {},
   };
   const refs = {
     transcript: useRef<HTMLDivElement>(null),
     summary: useRef<HTMLDivElement>(null),
     chat: useRef<HTMLDivElement>(null),
     notes: useRef<HTMLDivElement>(null),
+    forge: useRef<HTMLDivElement>(null),
   };
 
   // Find the index of the LAST expanded pane — that one gets `flex: 1` so it
