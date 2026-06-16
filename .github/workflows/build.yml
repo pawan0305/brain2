@@ -1,0 +1,46 @@
+name: Build Brain2 portable exe
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        run: npm run tauri build
+
+      - name: Upload portable exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brain2-portable-exe
+          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+
+  create-release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Brain2-portable-exe
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: "*.exe"
+          generate_release_notes: true
