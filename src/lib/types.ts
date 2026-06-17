@@ -51,6 +51,10 @@ export interface SettingsView {
   openai_set: boolean;
   openai_base_url: string;
   openai_model: string;
+  agent_backend: string; // "direct" | "claude_code" | "hermes"
+  hermes_provider: string;
+  hermes_model: string;
+  claude_model: string;
 }
 
 export interface MeetingSummaryRow {
@@ -73,4 +77,45 @@ export interface DgStatusPayload {
 export interface AudioLevel {
   mic: number; // 0..1
   sys: number; // 0..1
+}
+
+// ── Brain engine ─────────────────────────────
+
+export interface ActionItem {
+  id: string;
+  text: string;
+  assignee?: string | null;
+  detected_at: string;
+  meeting_id: string;
+  done: boolean;
+}
+
+export interface Decision {
+  id: string;
+  text: string;
+  context: string;
+  detected_at: string;
+  meeting_id: string;
+}
+
+export interface MemoryThread {
+  id: string;
+  title: string;
+  related_meetings: string[];
+  summary: string;
+  last_updated: string;
+}
+
+export interface BrainEvent {
+  kind: string; // "action_item" | "decision" | "context_recall" | "suggestion"
+  content: string;
+  at: string;
+}
+
+export interface BrainStatus {
+  action_items: ActionItem[];
+  decisions: Decision[];
+  threads: MemoryThread[];
+  events: BrainEvent[];
+  enabled: boolean;
 }

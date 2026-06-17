@@ -114,6 +114,46 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
   );
   const [savingOpenai, setSavingOpenai] = useState(false);
 
+  // Agent backend — the "brain" harness driving the Brain engine + Forge.
+  const [agentBackend, setAgentBackend] = useState<string>(
+    settings?.agent_backend || "direct",
+  );
+  const [claudeModel, setClaudeModel] = useState<string>(
+    settings?.claude_model || "haiku",
+  );
+  const [hermesProvider, setHermesProvider] = useState<string>(
+    settings?.hermes_provider || "",
+  );
+  const [hermesModel, setHermesModel] = useState<string>(
+    settings?.hermes_model || "",
+  );
+  const saveAgentBackend = async (next: string) => {
+    setAgentBackend(next);
+    try {
+      onSettingsChanged(
+        await api.setAgentBackend(next as "direct" | "claude_code" | "hermes"),
+      );
+    } catch (err) {
+      onError(`agent backend: ${err}`);
+    }
+  };
+  const saveClaudeModel = async () => {
+    try {
+      onSettingsChanged(await api.setClaudeModel(claudeModel.trim() || "haiku"));
+    } catch (err) {
+      onError(`claude model: ${err}`);
+    }
+  };
+  const saveHermesConfig = async () => {
+    try {
+      onSettingsChanged(
+        await api.setHermesConfig({ provider: hermesProvider, model: hermesModel }),
+      );
+    } catch (err) {
+      onError(`hermes config: ${err}`);
+    }
+  };
+
   const saveLlmProvider = async (next: "anthropic" | "openai") => {
     setLlmProvider(next);
     try {
@@ -309,6 +349,71 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
             </div>
           </label>
         )}
+
+        <label>
+          <span>
+            Brain2 agent
+            <em className="muted"> (drives the Brain engine + Forge)</em>
+          </span>
+          <select
+            value={agentBackend}
+            onChange={(e) => saveAgentBackend(e.target.value)}
+          >
+            <option value="direct">Direct — Claude Haiku (fast, default)</option>
+            <option value="claude_code">Claude Code (the agent IS Brain2)</option>
+            <option value="hermes">Hermes (WSL — local-LLM capable)</option>
+          </select>
+          <small>
+            The brain behind action items, decisions, recall, wrap-ups, and the
+            Forge self-improver. Claude Code and Hermes both read the shared
+            persona at{" "}
+            <code>%LOCALAPPDATA%\com.brain2.app\agent-prompts\BRAIN2.md</code>.
+            Live translation always uses the fast Direct path regardless.
+          </small>
+          {agentBackend === "claude_code" && (
+            <div style={{ marginTop: 6 }}>
+              <input
+                type="text"
+                value={claudeModel}
+                onChange={(e) => setClaudeModel(e.target.value)}
+                onBlur={saveClaudeModel}
+                placeholder="haiku · sonnet · opus · or a full model id"
+                autoComplete="off"
+              />
+              <small>
+                Claude Code's own default model can be one your account can't
+                use headlessly — keep an explicit model here. "haiku" is
+                cheapest.
+              </small>
+            </div>
+          )}
+          {agentBackend === "hermes" && (
+            <div style={{ marginTop: 6 }}>
+              <input
+                type="text"
+                value={hermesProvider}
+                onChange={(e) => setHermesProvider(e.target.value)}
+                onBlur={saveHermesConfig}
+                placeholder="provider (blank = Hermes default; e.g. ollama for local)"
+                autoComplete="off"
+              />
+              <input
+                type="text"
+                value={hermesModel}
+                onChange={(e) => setHermesModel(e.target.value)}
+                onBlur={saveHermesConfig}
+                placeholder="model (blank = Hermes default)"
+                autoComplete="off"
+                style={{ marginTop: 6 }}
+              />
+              <small>
+                Runs <code>hermes -z</code> in WSL. Set provider/model to point
+                the brain at a local LLM (e.g. provider <code>ollama</code>).
+                Requires WSL + Hermes installed.
+              </small>
+            </div>
+          )}
+        </label>
 
         <label>
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>

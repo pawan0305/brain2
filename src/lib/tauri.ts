@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AudioLevel,
+  BrainStatus,
   DgStatusPayload,
   Meeting,
   MeetingCost,
@@ -80,6 +81,24 @@ export const api = {
       question,
       meetingId,
     }),
+  // Agent backend — the "brain" harness: direct Haiku, Claude Code, or Hermes.
+  setAgentBackend: (backend: "direct" | "claude_code" | "hermes") =>
+    invoke<SettingsView>("set_agent_backend", { backend }),
+  setClaudeModel: (model: string) =>
+    invoke<SettingsView>("set_claude_model", { model }),
+  setHermesConfig: (cfg: { provider?: string; model?: string }) =>
+    invoke<SettingsView>("set_hermes_config", {
+      provider: cfg.provider,
+      model: cfg.model,
+    }),
+  // Brain engine.
+  brainStatus: () => invoke<BrainStatus>("brain_status"),
+  brainToggle: (enabled: boolean) =>
+    invoke<BrainStatus>("brain_toggle", { enabled }),
+  brainMarkActionDone: (id: string) =>
+    invoke<BrainStatus>("brain_mark_action_done", { id }),
+  brainWrapUp: (meetingId: string, meetingTitle: string, fullTranscript: string) =>
+    invoke<string>("brain_wrap_up", { meetingId, meetingTitle, fullTranscript }),
 };
 
 export type EventHandlers = {

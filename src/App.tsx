@@ -7,6 +7,7 @@ import { SummaryPane } from "./components/SummaryPane";
 import { ChatPane } from "./components/ChatPane";
 import { NotesPane } from "./components/NotesPane";
 import { ForgePane } from "./components/ForgePane";
+import { BrainPane } from "./components/BrainPane";
 import { SettingsModal } from "./components/SettingsModal";
 import { HistoryDrawer } from "./components/HistoryDrawer";
 import { Splitter } from "./components/Splitter";
@@ -60,6 +61,8 @@ export function App() {
     usePersistedBool("paneCollapsed.notes", true);
   const [forgeCollapsed, setForgeCollapsed] =
     usePersistedBool("paneCollapsed.forge", false);
+  const [brainCollapsed, setBrainCollapsed] =
+    usePersistedBool("paneCollapsed.brain", true);
 
   const meetingRef = useRef<Meeting | null>(null);
   meetingRef.current = meeting;
@@ -410,6 +413,19 @@ export function App() {
             ),
           },
           {
+            id: "brain",
+            title: "Brain",
+            collapsed: brainCollapsed,
+            onToggle: () => setBrainCollapsed(!brainCollapsed),
+            content: (
+              <BrainPane
+                meeting={meeting}
+                onError={pushError}
+                onCollapse={() => setBrainCollapsed(true)}
+              />
+            ),
+          },
+          {
             id: "forge",
             title: "Forge",
             collapsed: forgeCollapsed,
@@ -532,7 +548,7 @@ function CollapsedStrip({ title, onExpand }: { title: string; onExpand: () => vo
 }
 
 interface PaneSpec {
-  id: "transcript" | "summary" | "chat" | "notes" | "forge";
+  id: "transcript" | "summary" | "chat" | "notes" | "forge" | "brain";
   title: string;
   content: React.ReactNode;
   collapsed: boolean;
@@ -544,12 +560,14 @@ function ResizableMain({ panes }: { panes: PaneSpec[] }) {
   const [transcriptW, setTranscriptW] = usePersistedNumber("paneW.transcript", 600);
   const [summaryW, setSummaryW] = usePersistedNumber("paneW.summary", 380);
   const [chatW, setChatW] = usePersistedNumber("paneW.chat", 380);
+  const [brainW, setBrainW] = usePersistedNumber("paneW.brain", 360);
   const widths: Record<PaneSpec["id"], number> = {
     transcript: transcriptW,
     summary: summaryW,
     chat: chatW,
     notes: 0, // last expanded pane absorbs the rest
     forge: 0,
+    brain: brainW,
   };
   const setWidth: Record<PaneSpec["id"], (n: number) => void> = {
     transcript: setTranscriptW,
@@ -557,6 +575,7 @@ function ResizableMain({ panes }: { panes: PaneSpec[] }) {
     chat: setChatW,
     notes: () => {},
     forge: () => {},
+    brain: setBrainW,
   };
   const refs = {
     transcript: useRef<HTMLDivElement>(null),
@@ -564,6 +583,7 @@ function ResizableMain({ panes }: { panes: PaneSpec[] }) {
     chat: useRef<HTMLDivElement>(null),
     notes: useRef<HTMLDivElement>(null),
     forge: useRef<HTMLDivElement>(null),
+    brain: useRef<HTMLDivElement>(null),
   };
 
   // Find the index of the LAST expanded pane — that one gets `flex: 1` so it
