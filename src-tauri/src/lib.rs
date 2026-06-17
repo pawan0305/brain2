@@ -1,3 +1,4 @@
+mod agent;
 mod anthropic;
 mod audio;
 mod brain;
@@ -62,6 +63,10 @@ pub fn run() {
                 .app_data_dir()
                 .expect("could not resolve app data dir");
             std::fs::create_dir_all(&data_dir).ok();
+
+            // Seed the shared agent persona (agent-prompts/BRAIN2.md) to disk so
+            // it's editable; both Claude Code and Hermes read the same file.
+            crate::agent::seed_persona();
 
             let state = AppState::new(app_handle.clone(), data_dir.clone());
             app.manage(Arc::new(state));
@@ -152,6 +157,9 @@ pub fn run() {
             factory::factory_report_error,
             factory::factory_add_idea,
             factory::factory_check_update,
+            // Agent backend
+            commands::set_agent_backend,
+            commands::set_hermes_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

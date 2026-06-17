@@ -264,6 +264,29 @@ pub async fn set_overlay_locked(
     Ok(view)
 }
 
+/// Pick the agent harness that drives Brain2's reasoning (Brain engine +
+/// Forge): "direct" (Anthropic Haiku), "claude_code" (Claude Code CLI), or
+/// "hermes" (Hermes agent in WSL). The agent IS Brain2; the harness is a
+/// swappable shell around the shared agent-prompts/BRAIN2.md persona.
+#[tauri::command]
+pub async fn set_agent_backend(backend: String) -> Result<SettingsView, String> {
+    settings::set_agent_backend(&backend).map_err(|e| e.to_string())?;
+    settings::settings_view().map_err(|e| e.to_string())
+}
+
+/// Configure the Hermes backend's provider/model — the knob for pointing
+/// Brain2's brain at a local LLM (e.g. provider "ollama"). A field passed as
+/// None is left unchanged.
+#[tauri::command]
+pub async fn set_hermes_config(
+    provider: Option<String>,
+    model: Option<String>,
+) -> Result<SettingsView, String> {
+    settings::set_hermes_config(provider.as_deref(), model.as_deref())
+        .map_err(|e| e.to_string())?;
+    settings::settings_view().map_err(|e| e.to_string())
+}
+
 // ------- meetings -------
 
 #[tauri::command]

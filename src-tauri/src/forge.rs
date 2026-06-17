@@ -183,48 +183,94 @@ impl ForgeState {
             return Err(anyhow!("Forge not initialized. Click Init to clone the repo first."));
         }
 
-        let source_context = build_source_context(&ws)?;
+        let backend = crate::agent::current_backend();
 
-        // Call Claude to get the improvement plan + changes
-        let agent_response = call_forge_agent(api_key, &message, &source_context).await?;
-
-        // Try to apply the changes
-        match apply_changes(&ws, &agent_response) {
-            Ok(files_changed) => {
-                let summary = if files_changed.is_empty() {
-                    format!("{}\n\nNo source changes were needed.", agent_response)
-                } else {
-                    format!(
-                        "{}\n\n✅ Changes applied to {} file(s): {}\nReview the diff below and Approve or Reject.",
-                        agent_response,
-                        files_changed.len(),
-                        files_changed.join(", ")
-                    )
-                };
-
-                let agent_msg = ForgeMessage {
-                    id: Uuid::new_v4(),
-                    role: "agent".into(),
-                    content: summary,
-                    at: Utc::now(),
-                };
-                self.inner.write().messages.push(agent_msg);
-                self.emit_status();
-                Ok(agent_response)
+        // Direct keeps the built-in patch flow (ask Haiku for a patch in a
+        // custom format, apply it). Claude Code / Hermes are real coding agents
+        // — they edit files in the workspace directly, then the user reviews the
+        // git diff via the existing Approve/Reject/Build gate.
+        if backend == crate::agent::AgentBackend::Direct {
+            let source_context = build_source_context(&ws)?;
+            let agent_response = call_forge_agent(api_key, &message, &source_context).await?;
+            match apply_changes(&ws, &agent_response) {
+                Ok(files_changed) => {
+                    let summary = if files_changed.is_empty() {
+                        format!("{}\n\nNo source changes were needed.", agent_response)
+                    } else {
+                        format!(
+                            "{}\n\n✅ Changes applied to {} file(s): {}\nReview the diff below and Approve or Reject.",
+                            agent_response,
+                            files_changed.len(),
+                            files_changed.join(", ")
+                        )
+                    };
+                    let agent_msg = ForgeMessage {
+                        id: Uuid::new_v4(),
+                        role: "agent".into(),
+                        content: summary,
+                        at: Utc::now(),
+                    };
+                    self.inner.write().messages.push(agent_msg);
+                    self.emit_status();
+                    Ok(agent_response)
+                }
+                Err(e) => {
+                    let agent_msg = ForgeMessage {
+                        id: Uuid::new_v4(),
+                        role: "agent".into(),
+                        content: format!(
+                            "{}\n\n⚠️ Could not apply changes automatically: {e}\nPlease apply the changes manually in the workspace.",
+                            agent_response
+                        ),
+                        at: Utc::now(),
+                    };
+                    self.inner.write().messages.push(agent_msg);
+                    self.emit_status();
+                    Ok(agent_response)
+                }
             }
-            Err(e) => {
-                let agent_msg = ForgeMessage {
-                    id: Uuid::new_v4(),
-                    role: "agent".into(),
-                    content: format!(
-                        "{}\n\n⚠️ Could not apply changes automatically: {e}\nPlease apply the changes manually in the workspace.",
-                        agent_response
-                    ),
-                    at: Utc::now(),
-                };
-                self.inner.write().messages.push(agent_msg);
-                self.emit_status();
-                Ok(agent_response)
+        } else {
+            match crate::agent::run_in_workspace(
+                backend,
+                &ws,
+                &crate::agent::persona(),
+                &message,
+                api_key,
+            )
+            .await
+            {
+                Ok(summary) => {
+                    let changed = git_pending_files(&ws).unwrap_or_default();
+                    let content = if changed.is_empty() {
+                        format!("{summary}\n\nNo source changes were made.")
+                    } else {
+                        format!(
+                            "{summary}\n\n✅ {} file(s) changed: {}\nReview the diff below and Approve or Reject.",
+                            changed.len(),
+                            changed.join(", ")
+                        )
+                    };
+                    let agent_msg = ForgeMessage {
+                        id: Uuid::new_v4(),
+                        role: "agent".into(),
+                        content,
+                        at: Utc::now(),
+                    };
+                    self.inner.write().messages.push(agent_msg);
+                    self.emit_status();
+                    Ok(summary)
+                }
+                Err(e) => {
+                    let agent_msg = ForgeMessage {
+                        id: Uuid::new_v4(),
+                        role: "agent".into(),
+                        content: format!("⚠️ Agent run failed: {e}"),
+                        at: Utc::now(),
+                    };
+                    self.inner.write().messages.push(agent_msg);
+                    self.emit_status();
+                    Ok(format!("Agent run failed: {e}"))
+                }
             }
         }
     }

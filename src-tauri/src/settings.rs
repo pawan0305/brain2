@@ -74,6 +74,19 @@ pub struct ApiKeys {
     /// sensible default ("gpt-4o-mini"). For Ollama use e.g. "llama3.1:8b".
     #[serde(default)]
     pub openai_model: String,
+    /// Which agent harness drives Brain2's reasoning (Brain engine + Forge).
+    /// "direct" (default) = Anthropic Haiku directly; "claude_code" = the
+    /// Claude Code CLI; "hermes" = the Hermes agent in WSL.
+    #[serde(default = "default_agent_backend")]
+    pub agent_backend: String,
+    /// When agent_backend = "hermes": override Hermes's provider (e.g.
+    /// "deepseek", "ollama"). Empty = Hermes's own default. This is the knob
+    /// for pointing Brain2's brain at a local LLM later.
+    #[serde(default)]
+    pub hermes_provider: String,
+    /// When agent_backend = "hermes": override Hermes's model. Empty = default.
+    #[serde(default)]
+    pub hermes_model: String,
 }
 
 impl Default for ApiKeys {
@@ -97,6 +110,9 @@ impl Default for ApiKeys {
             openai_api_key: None,
             openai_base_url: String::new(),
             openai_model: String::new(),
+            agent_backend: default_agent_backend(),
+            hermes_provider: String::new(),
+            hermes_model: String::new(),
         }
     }
 }
@@ -109,6 +125,7 @@ fn default_overlay_locked() -> bool { true }
 fn default_target_language() -> String { "English".to_string() }
 fn default_source_language() -> String { "multi".to_string() }
 fn default_llm_provider() -> String { "anthropic".to_string() }
+fn default_agent_backend() -> String { "direct".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsView {
@@ -126,6 +143,9 @@ pub struct SettingsView {
     pub openai_set: bool,
     pub openai_base_url: String,
     pub openai_model: String,
+    pub agent_backend: String,
+    pub hermes_provider: String,
+    pub hermes_model: String,
 }
 
 /// %APPDATA%\com.brain2.app\keys.json — the same directory Tauri's
@@ -171,7 +191,42 @@ pub fn settings_view() -> Result<SettingsView> {
             .unwrap_or(false),
         openai_base_url: keys.openai_base_url.clone(),
         openai_model: keys.openai_model.clone(),
+        agent_backend: keys.agent_backend.clone(),
+        hermes_provider: keys.hermes_provider.clone(),
+        hermes_model: keys.hermes_model.clone(),
     })
+}
+
+pub fn read_agent_backend() -> String {
+    read_keys()
+        .map(|k| k.agent_backend)
+        .unwrap_or_else(|_| "direct".into())
+}
+
+pub fn set_agent_backend(backend: &str) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    keys.agent_backend = match backend.trim().to_ascii_lowercase().as_str() {
+        "claude_code" | "claude-code" | "claudecode" | "claude" => "claude_code".to_string(),
+        "hermes" => "hermes".to_string(),
+        _ => "direct".to_string(),
+    };
+    write_keys_back(&keys)
+}
+
+pub fn read_hermes_config() -> (String, String) {
+    let k = read_keys().unwrap_or_default();
+    (k.hermes_provider, k.hermes_model)
+}
+
+pub fn set_hermes_config(provider: Option<&str>, model: Option<&str>) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    if let Some(p) = provider {
+        keys.hermes_provider = p.trim().to_string();
+    }
+    if let Some(m) = model {
+        keys.hermes_model = m.trim().to_string();
+    }
+    write_keys_back(&keys)
 }
 
 pub fn read_llm_provider() -> String {

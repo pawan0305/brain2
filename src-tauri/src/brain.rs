@@ -18,7 +18,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -254,35 +254,14 @@ impl BrainEngine {
             MEETING: {meeting_title}\n\nTRANSCRIPT:\n{full_transcript}"
         );
 
-        let client = reqwest::Client::new();
-        let payload = serde_json::json!({
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 2048,
-            "system": [{"type": "text", "text": "You are a precise meeting assistant. Be concise and actionable."}],
-            "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
-        });
-
-        let resp = client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", api_key)
-            .header("anthropic-version", "2023-06-01")
-            .json(&payload)
-            .send()
-            .await
-            .context("wrap-up API call failed")?;
-
-        let body: serde_json::Value = resp.json().await?;
-        let text = body["content"]
-            .as_array()
-            .map(|blocks| {
-                blocks
-                    .iter()
-                    .filter_map(|b| b["text"].as_str())
-                    .collect::<Vec<_>>()
-                    .join("")
-            })
-            .unwrap_or_default()
-            .to_string();
+        let text = crate::agent::run_text(
+            crate::agent::current_backend(),
+            &crate::agent::persona(),
+            "You are a precise meeting assistant. Be concise and actionable.",
+            &prompt,
+            api_key,
+        )
+        .await?;
 
         Ok(text)
     }
@@ -428,54 +407,26 @@ async fn recall_context(api_key: &str, meeting_title: &str, text: &str) -> Resul
          MEETING: {meeting_title}\n\nTRANSCRIPT:\n{text}"
     );
 
-    let client = reqwest::Client::new();
-    let payload = serde_json::json!({
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 256,
-        "system": [{"type": "text", "text": "Be concise. Return an empty string if nothing is relevant."}],
-        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
-    });
-
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&payload)
-        .send()
-        .await?;
-
-    let body: serde_json::Value = resp.json().await?;
-    Ok(body["content"]
-        .as_array()
-        .map(|blocks| blocks.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join(""))
-        .unwrap_or_default()
-        .trim()
-        .to_string())
+    let out = crate::agent::run_text(
+        crate::agent::current_backend(),
+        &crate::agent::persona(),
+        "Be concise. Return an empty string if nothing is relevant.",
+        &prompt,
+        api_key,
+    )
+    .await?;
+    Ok(out.trim().to_string())
 }
 
 async fn call_claude_extract(api_key: &str, instruction: &str, text: &str) -> Result<Vec<String>> {
-    let client = reqwest::Client::new();
-    let payload = serde_json::json!({
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 1024,
-        "system": [{"type": "text", "text": instruction}],
-        "messages": [{"role": "user", "content": [{"type": "text", "text": text}]}]
-    });
-
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&payload)
-        .send()
-        .await?;
-
-    let body: serde_json::Value = resp.json().await?;
-    let raw = body["content"]
-        .as_array()
-        .map(|blocks| blocks.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join(""))
-        .unwrap_or_default()
-        .to_string();
+    let raw = crate::agent::run_text(
+        crate::agent::current_backend(),
+        &crate::agent::persona(),
+        instruction,
+        text,
+        api_key,
+    )
+    .await?;
 
     // Try to parse as JSON array
     if let Ok(items) = serde_json::from_str::<Vec<String>>(&raw) {
