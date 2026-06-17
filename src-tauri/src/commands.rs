@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -12,6 +13,8 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::anthropic::ChatStreamEvent;
+use crate::brain::BrainEngine;
+use crate::factory::FactoryConnector;
 use crate::llm::LlmClient;
 use crate::audio;
 use crate::deepgram::{self, DeepgramConfig, DeepgramEvent};
@@ -267,6 +270,8 @@ pub async fn set_overlay_locked(
 pub async fn start_meeting(
     title: Option<String>,
     state: State<'_, Arc<AppState>>,
+    brain: State<'_, Arc<BrainEngine>>,
+    factory: State<'_, Arc<FactoryConnector>>,
 ) -> Result<Meeting, String> {
     if state.current().is_some() {
         return Err("a meeting is already running".into());
@@ -285,8 +290,12 @@ pub async fn start_meeting(
     state.set_current(handle.clone());
 
     let app_state = state.inner().clone();
+    let brain = brain.inner().clone();
+    let factory = factory.inner().clone();
     tokio::spawn(async move {
-        if let Err(err) = run_meeting(app_state.clone(), handle.clone(), dg_key, an_key).await {
+        if let Err(err) =
+            run_meeting(app_state.clone(), handle.clone(), brain, factory, dg_key, an_key).await
+        {
             tracing::error!(?err, "meeting loop failed");
             app_state.emit(
                 "error",
@@ -961,6 +970,8 @@ pub async fn ask_question(
 async fn run_meeting(
     state: Arc<AppState>,
     handle: Arc<MeetingHandle>,
+    brain: Arc<BrainEngine>,
+    factory: Arc<FactoryConnector>,
     dg_key: String,
     an_key: String,
 ) -> Result<()> {
@@ -1075,7 +1086,7 @@ async fn run_meeting(
     // Need a Clone of DeepgramConfig so the loop can clone per attempt.
     // (Clone derived below in the type; nothing to do here.)
 
-    let claude = Arc::new(LlmClient::from_settings(an_key, settings::read_target_language()));
+    let claude = Arc::new(LlmClient::from_settings(an_key.clone(), settings::read_target_language()));
 
     let mut pending: Option<PendingSeg> = None;
     // Summaries are user-triggered only (regenerate_summary command). No
@@ -1083,12 +1094,39 @@ async fn run_meeting(
     let mut save_timer = tokio::time::interval(Duration::from_secs(15));
     save_timer.tick().await;
 
+    // Central Brain ingestion. On a debounced timer we hand the latest
+    // finalized transcript to the Brain engine — this is the single point
+    // where everything the meeting captures (system audio, incl. Teams/Zoom
+    // calls, plus the mic) feeds the 2nd brain. The busy flag stops runs from
+    // overlapping so we never double-process or stall the transcription loop
+    // while a Claude call is in flight.
+    let mut brain_timer = tokio::time::interval(Duration::from_secs(30));
+    brain_timer.tick().await;
+    let brain_busy = Arc::new(AtomicBool::new(false));
+
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
             evt = dg_rx.recv() => {
                 let Some(evt) = evt else { break };
                 handle_dg_event(evt, &mut pending, &state, &meeting, &claude).await;
+            }
+            _ = brain_timer.tick() => {
+                let live_paused = handle.paused.load(Ordering::Relaxed);
+                if !live_paused
+                    && brain_busy
+                        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+                        .is_ok()
+                {
+                    let brain = brain.clone();
+                    let meeting = meeting.clone();
+                    let api = an_key.clone();
+                    let busy = brain_busy.clone();
+                    tokio::spawn(async move {
+                        feed_brain(&brain, &meeting, &api).await;
+                        busy.store(false, Ordering::Relaxed);
+                    });
+                }
             }
             _ = save_timer.tick() => {
                 let snap = meeting.read().clone();
@@ -1107,12 +1145,62 @@ async fn run_meeting(
         let mut m = meeting.write();
         m.ended_at = Some(Utc::now());
     }
+    // Final Brain pass so any segments since the last timer tick are captured
+    // before the meeting closes out.
+    feed_brain(&brain, &meeting, &an_key).await;
     let snap = meeting.read().clone();
     let dir = state.meetings_dir();
     let _ = tokio::task::spawn_blocking(move || storage::save_meeting(&dir, &snap)).await;
     state.emit("meeting:stopped", meeting.read().clone());
+
+    // Best-effort telemetry to the AI Factory. Non-blocking: if the factory
+    // isn't running on :3737 the send just fails quietly.
+    {
+        let factory = factory.clone();
+        let brain_status = brain.status();
+        let meeting_snap = meeting.read().clone();
+        tokio::spawn(async move {
+            let metrics = factory.build_metrics(
+                1,
+                meeting_snap.cost.deepgram_audio_secs,
+                0.0,
+                0.0,
+                0,
+                brain_status.action_items.len() as u64,
+                brain_status.decisions.len() as u64,
+            );
+            if let Err(err) = factory.send_metrics(metrics).await {
+                tracing::debug!(?err, "factory metrics send failed");
+            }
+        });
+    }
+
     state.clear_current();
     Ok(())
+}
+
+/// Central Brain ingestion point. Snapshots the live transcript and hands the
+/// new content to the Brain engine. Everything a meeting captures — system
+/// audio (Teams, Zoom, browser calls) and the mic — lands here as finalized
+/// segments, so this one call covers every source. `segment_count` is the
+/// transcript line count, which the Brain engine uses to process only the
+/// segments it hasn't seen yet.
+async fn feed_brain(brain: &Arc<BrainEngine>, meeting: &Arc<RwLock<Meeting>>, api_key: &str) {
+    let (id, title, transcript, seg_count) = {
+        let m = meeting.read();
+        let transcript = m.source_text();
+        let seg_count = transcript.lines().count();
+        (m.id, m.title.clone(), transcript, seg_count)
+    };
+    if transcript.trim().is_empty() {
+        return;
+    }
+    if let Err(err) = brain
+        .process_new_content(id, &title, &transcript, seg_count, api_key)
+        .await
+    {
+        tracing::warn!(?err, "brain processing failed");
+    }
 }
 
 /// Stability window — once a piece of text has appeared in interims for at

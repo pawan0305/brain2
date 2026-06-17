@@ -424,7 +424,7 @@ impl ForgeState {
         let commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
         let fv = ForgeVersion {
-            version,
+            version: version.clone(),
             commit: commit.clone(),
             built_at: Utc::now(),
             exe_path: Some(dest.clone()),
@@ -738,7 +738,7 @@ async fn call_forge_agent(api_key: &str, request: &str, source_context: &str) ->
     let body: serde_json::Value = resp.json().await.context("Failed to parse response")?;
     let content = body["content"]
         .as_array()
-        .and_then(|blocks| {
+        .map(|blocks| {
             blocks
                 .iter()
                 .filter_map(|b| b["text"].as_str())
@@ -795,23 +795,31 @@ fn apply_changes(ws: &Path, response: &str) -> Result<Vec<String>> {
                 let clean_file = file.replace(" (NEW FILE)", "").trim().to_string();
                 let file_path = ws.join(&clean_file);
 
+                let mut applied = false;
                 if is_new_file {
                     if let Some(parent) = file_path.parent() {
                         fs::create_dir_all(parent)?;
                     }
                     fs::write(&file_path, &new_content)?;
+                    applied = true;
                 } else if file_path.exists() {
                     let existing = fs::read_to_string(&file_path)?;
                     if existing.contains(&old_content) {
-                        let updated = existing.replace(&old_content, &new_content);
+                        // Replace only the first match — patches target one site.
+                        let updated = existing.replacen(&old_content, &new_content, 1);
                         fs::write(&file_path, updated)?;
+                        applied = true;
                     } else {
                         tracing::warn!(
                             "Forge: old string not found in {clean_file}. Skipping patch."
                         );
                     }
                 }
-                files_changed.push(clean_file);
+                // Only report files we actually changed, so the diff/approve
+                // step doesn't claim edits that were skipped.
+                if applied {
+                    files_changed.push(clean_file);
+                }
             }
             in_forge = false;
             current_file = None;

@@ -160,8 +160,11 @@ impl FactoryConnector {
     pub fn add_idea(&self, idea: &str) {
         let mut inner = self.inner.write();
         inner.improvement_ideas.push(idea.to_string());
-        // Keep only the last 50
-        inner.improvement_ideas.truncate(50);
+        // Keep only the most recent 50 (drop oldest from the front).
+        let len = inner.improvement_ideas.len();
+        if len > 50 {
+            inner.improvement_ideas.drain(0..len - 50);
+        }
         self.save_state();
     }
 

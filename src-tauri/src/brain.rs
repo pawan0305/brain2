@@ -14,7 +14,6 @@
 //! The engine runs on a debounced timer — it waits for a pause in
 //! speech, then processes the latest transcript chunk.
 
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -138,14 +137,16 @@ impl BrainEngine {
             return Ok(vec![]);
         }
 
-        // Get the new content only
+        // Get the new content only — the segments added since `last`. The
+        // caller passes segment_count == number of transcript lines, so the
+        // already-processed text is the first `last` lines and the new text
+        // is everything after it.
         let new_content = if last == 0 {
             transcript_text.to_string()
         } else {
-            // Approximate: take the last N segments worth of text
             let lines: Vec<&str> = transcript_text.lines().collect();
-            let new_lines = lines.len().saturating_sub(segment_count - last);
-            lines[lines.len().saturating_sub(new_lines)..].join("\n")
+            let start = last.min(lines.len());
+            lines[start..].join("\n")
         };
 
         let mut events = vec![];
@@ -153,10 +154,11 @@ impl BrainEngine {
         // 1. Detect action items
         let actions = detect_action_items(api_key, &new_content).await?;
         for action in actions {
+            let assignee = extract_assignee(&action);
             let item = ActionItem {
                 id: Uuid::new_v4(),
                 text: action,
-                assignee: extract_assignee(&action),
+                assignee,
                 detected_at: Utc::now(),
                 meeting_id,
                 done: false,
@@ -272,7 +274,7 @@ impl BrainEngine {
         let body: serde_json::Value = resp.json().await?;
         let text = body["content"]
             .as_array()
-            .and_then(|blocks| {
+            .map(|blocks| {
                 blocks
                     .iter()
                     .filter_map(|b| b["text"].as_str())
@@ -445,7 +447,7 @@ async fn recall_context(api_key: &str, meeting_title: &str, text: &str) -> Resul
     let body: serde_json::Value = resp.json().await?;
     Ok(body["content"]
         .as_array()
-        .and_then(|blocks| blocks.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join(""))
+        .map(|blocks| blocks.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join(""))
         .unwrap_or_default()
         .trim()
         .to_string())
@@ -471,7 +473,7 @@ async fn call_claude_extract(api_key: &str, instruction: &str, text: &str) -> Re
     let body: serde_json::Value = resp.json().await?;
     let raw = body["content"]
         .as_array()
-        .and_then(|blocks| blocks.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join(""))
+        .map(|blocks| blocks.iter().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join(""))
         .unwrap_or_default()
         .to_string();
 
@@ -547,14 +549,11 @@ pub async fn brain_wrap_up(
     meeting_id: Uuid,
     meeting_title: String,
     full_transcript: String,
+    brain: State<'_, Arc<BrainEngine>>,
 ) -> Result<String, String> {
     let api_key = settings::require_llm_credentials().map_err(|e| e.to_string())?;
-    // In a real app we'd get the brain engine from state, but for wrap-up
-    // we create a one-shot. The meeting commands call this before saving.
-    let brain = BrainEngine::new(
-        tauri::AppHandle::default(), // won't be used for emitting
-        std::env::temp_dir(),
-    );
+    // Use the managed engine so the wrap-up sees the action items and
+    // decisions already detected for this meeting.
     brain
         .wrap_up(meeting_id, &meeting_title, &full_transcript, &api_key)
         .await
