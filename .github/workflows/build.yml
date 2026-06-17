@@ -5,6 +5,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# The default Actions token is read-only; create-release needs write to
+# publish the GitHub Release + upload the exe asset.
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
