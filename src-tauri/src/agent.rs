@@ -189,6 +189,12 @@ async fn direct_haiku(persona: &str, system: &str, user: &str, api_key: &str) ->
 async fn claude_code(prompt: &str, api_key: &str, cwd: Option<&Path>) -> Result<String> {
     let mut cmd = claude_base_command();
     cmd.arg("-p").arg("--output-format").arg("text");
+    // Always pass an explicit model — the CLI's own default may be a preview
+    // model the account can't use in headless mode.
+    let model = settings::read_claude_model();
+    if !model.trim().is_empty() {
+        cmd.arg("--model").arg(model.trim());
+    }
     if cwd.is_some() {
         // Editing the workspace: auto-accept edits — the user reviews the diff
         // afterwards via the Forge Approve/Reject gate.

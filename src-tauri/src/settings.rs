@@ -87,6 +87,11 @@ pub struct ApiKeys {
     /// When agent_backend = "hermes": override Hermes's model. Empty = default.
     #[serde(default)]
     pub hermes_model: String,
+    /// Model for the Claude Code backend (`claude --model`). The CLI's own
+    /// default can be a preview model the account can't use headlessly, so we
+    /// always pass an explicit one. Default "haiku".
+    #[serde(default = "default_claude_model")]
+    pub claude_model: String,
 }
 
 impl Default for ApiKeys {
@@ -113,6 +118,7 @@ impl Default for ApiKeys {
             agent_backend: default_agent_backend(),
             hermes_provider: String::new(),
             hermes_model: String::new(),
+            claude_model: default_claude_model(),
         }
     }
 }
@@ -126,6 +132,7 @@ fn default_target_language() -> String { "English".to_string() }
 fn default_source_language() -> String { "multi".to_string() }
 fn default_llm_provider() -> String { "anthropic".to_string() }
 fn default_agent_backend() -> String { "direct".to_string() }
+fn default_claude_model() -> String { "haiku".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsView {
@@ -146,6 +153,7 @@ pub struct SettingsView {
     pub agent_backend: String,
     pub hermes_provider: String,
     pub hermes_model: String,
+    pub claude_model: String,
 }
 
 /// %APPDATA%\com.brain2.app\keys.json — the same directory Tauri's
@@ -194,6 +202,7 @@ pub fn settings_view() -> Result<SettingsView> {
         agent_backend: keys.agent_backend.clone(),
         hermes_provider: keys.hermes_provider.clone(),
         hermes_model: keys.hermes_model.clone(),
+        claude_model: keys.claude_model.clone(),
     })
 }
 
@@ -226,6 +235,21 @@ pub fn set_hermes_config(provider: Option<&str>, model: Option<&str>) -> Result<
     if let Some(m) = model {
         keys.hermes_model = m.trim().to_string();
     }
+    write_keys_back(&keys)
+}
+
+pub fn read_claude_model() -> String {
+    let m = read_keys().map(|k| k.claude_model).unwrap_or_default();
+    if m.trim().is_empty() {
+        "haiku".to_string()
+    } else {
+        m
+    }
+}
+
+pub fn set_claude_model(model: &str) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    keys.claude_model = model.trim().to_string();
     write_keys_back(&keys)
 }
 

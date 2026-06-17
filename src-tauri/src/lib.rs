@@ -160,6 +160,7 @@ pub fn run() {
             // Agent backend
             commands::set_agent_backend,
             commands::set_hermes_config,
+            commands::set_claude_model,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

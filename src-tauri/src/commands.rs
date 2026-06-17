@@ -287,6 +287,14 @@ pub async fn set_hermes_config(
     settings::settings_view().map_err(|e| e.to_string())
 }
 
+/// Set the model used by the Claude Code backend (`claude --model`, e.g.
+/// "haiku", "sonnet", or a full model id).
+#[tauri::command]
+pub async fn set_claude_model(model: String) -> Result<SettingsView, String> {
+    settings::set_claude_model(&model).map_err(|e| e.to_string())?;
+    settings::settings_view().map_err(|e| e.to_string())
+}
+
 // ------- meetings -------
 
 #[tauri::command]
