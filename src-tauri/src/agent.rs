@@ -109,7 +109,7 @@ pub async fn run_text(
         AgentBackend::Direct => direct_haiku(persona, system, user, api_key).await,
         AgentBackend::ClaudeCode => {
             let prompt = format!("{persona}\n\n{system}\n\n{user}");
-            claude_code(&prompt, api_key, None).await
+            claude_code(&prompt, api_key, None, false).await
         }
         AgentBackend::Hermes => {
             let prompt = format!("{persona}\n\n{system}\n\n{user}");
@@ -137,11 +137,59 @@ pub async fn run_in_workspace(
          commit — the user reviews the diff.\n\nREQUEST:\n{instruction}"
     );
     match backend {
-        AgentBackend::ClaudeCode => claude_code(&prompt, api_key, Some(workspace)).await,
+        AgentBackend::ClaudeCode => claude_code(&prompt, api_key, Some(workspace), true).await,
         AgentBackend::Hermes => hermes(&prompt, Some(workspace)).await,
         AgentBackend::Direct => Err(anyhow!(
             "the Direct backend has no workspace agent; use the built-in Forge patch flow"
         )),
+    }
+}
+
+/// Agentic "Ask the meeting" — answer using the live transcript PLUS read
+/// access to the user's files (long-term memory). Claude Code / Hermes run with
+/// `read_root` as their working directory and use their own file tools
+/// (Read/Grep/Glob) to look across past meetings and notes. Read-only.
+pub async fn run_chat(
+    backend: AgentBackend,
+    question: &str,
+    transcript: &str,
+    read_root: &Path,
+    api_key: &str,
+) -> Result<String> {
+    let persona = persona();
+    let prompt = format!(
+        "{persona}\n\nYou are Brain2 answering a question for the user during or after a meeting \
+— their 2nd brain. You have READ access to their files under your working directory, including \
+past Brain2 meetings at `AppData\\Local\\com.brain2.app\\meetings` and any long-term notes. Use \
+your file tools (Read/Grep/Glob) to look across their history when it helps, then answer \
+concisely in plain text (no markdown). If the meeting and their files don't contain the answer, \
+say so rather than guessing. Don't read credential/secret files.\n\n\
+=== CURRENT MEETING TRANSCRIPT ===\n{transcript}\n\n=== QUESTION ===\n{question}"
+    );
+    match backend {
+        AgentBackend::ClaudeCode => claude_code(&prompt, api_key, Some(read_root), false).await,
+        AgentBackend::Hermes => hermes(&prompt, Some(read_root)).await,
+        AgentBackend::Direct => Err(anyhow!(
+            "the Direct backend has no agentic chat; the built-in chat handles it"
+        )),
+    }
+}
+
+/// Warm up the selected agent backend so the first real "Ask the meeting" query
+/// is fast. `claude -p` is stateless per call, so this can't hold a session
+/// open — but a throwaway probe primes the OS file cache, the Node module cache
+/// and the auth-token check, shaving seconds off the first real query. Just as
+/// usefully, it surfaces a broken setup (CLI missing / not authenticated) at
+/// app launch instead of mid-meeting. The reply is discarded; only success or
+/// failure matters. No-op for `Direct` (an HTTP call has nothing to warm).
+pub async fn warm_up(read_root: &Path, api_key: &str) -> Result<()> {
+    const PROBE: &str = "Reply with exactly the single word: ready";
+    match current_backend() {
+        AgentBackend::ClaudeCode => claude_code(PROBE, api_key, Some(read_root), false)
+            .await
+            .map(|_| ()),
+        AgentBackend::Hermes => hermes(PROBE, Some(read_root)).await.map(|_| ()),
+        AgentBackend::Direct => Ok(()),
     }
 }
 
@@ -186,7 +234,12 @@ async fn direct_haiku(persona: &str, system: &str, user: &str, api_key: &str) ->
 
 /// Spawn the Claude Code CLI in headless print mode, feeding the prompt on
 /// stdin so no dynamic content has to survive Windows command-line quoting.
-async fn claude_code(prompt: &str, api_key: &str, cwd: Option<&Path>) -> Result<String> {
+async fn claude_code(
+    prompt: &str,
+    api_key: &str,
+    cwd: Option<&Path>,
+    allow_edits: bool,
+) -> Result<String> {
     let mut cmd = claude_base_command();
     cmd.arg("-p").arg("--output-format").arg("text");
     // Always pass an explicit model — the CLI's own default may be a preview
@@ -195,9 +248,9 @@ async fn claude_code(prompt: &str, api_key: &str, cwd: Option<&Path>) -> Result<
     if !model.trim().is_empty() {
         cmd.arg("--model").arg(model.trim());
     }
-    if cwd.is_some() {
-        // Editing the workspace: auto-accept edits — the user reviews the diff
-        // afterwards via the Forge Approve/Reject gate.
+    if allow_edits {
+        // Forge: auto-accept edits — the user reviews the diff afterwards via
+        // the Approve/Reject gate. (Chat runs read-only: allow_edits = false.)
         cmd.arg("--permission-mode").arg("acceptEdits");
     }
     if let Some(dir) = cwd {

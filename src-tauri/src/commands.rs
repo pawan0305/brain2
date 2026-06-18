@@ -269,9 +269,51 @@ pub async fn set_overlay_locked(
 /// "hermes" (Hermes agent in WSL). The agent IS Brain2; the harness is a
 /// swappable shell around the shared agent-prompts/BRAIN2.md persona.
 #[tauri::command]
-pub async fn set_agent_backend(backend: String) -> Result<SettingsView, String> {
+pub async fn set_agent_backend(backend: String, app: AppHandle) -> Result<SettingsView, String> {
     settings::set_agent_backend(&backend).map_err(|e| e.to_string())?;
+    // Switching onto an agent backend? Warm it now so it's hot the moment the
+    // user opens "Ask the meeting", not on first use.
+    spawn_warm_up(app);
     settings::settings_view().map_err(|e| e.to_string())
+}
+
+/// Kick off a background warm-up of the selected agent backend so the first
+/// "Ask the meeting" query is fast (see `agent::warm_up`). No-op for the Direct
+/// backend. Progress is reported to the UI via the `agent:status` event with a
+/// `state` of `warming`, `ready`, or `error`.
+pub fn spawn_warm_up(app: AppHandle) {
+    use tauri::Emitter;
+    let backend = crate::agent::current_backend();
+    if backend == crate::agent::AgentBackend::Direct {
+        return;
+    }
+    // The CLI may be authenticated via its own login, so an absent API key is
+    // not fatal — pass whatever we have.
+    let key = settings::require_anthropic().unwrap_or_default();
+    tauri::async_runtime::spawn(async move {
+        let root = std::path::PathBuf::from(
+            std::env::var("USERPROFILE").unwrap_or_else(|_| ".".into()),
+        );
+        let _ = app.emit("agent:status", json!({ "state": "warming" }));
+        match crate::agent::warm_up(&root, &key).await {
+            Ok(()) => {
+                let _ = app.emit("agent:status", json!({ "state": "ready" }));
+            }
+            Err(e) => {
+                let _ = app.emit(
+                    "agent:status",
+                    json!({ "state": "error", "error": e.to_string() }),
+                );
+            }
+        }
+    });
+}
+
+/// Manually (re-)warm the agent backend on demand from the frontend.
+#[tauri::command]
+pub async fn warm_agent(app: AppHandle) -> Result<(), String> {
+    spawn_warm_up(app);
+    Ok(())
 }
 
 /// Configure the Hermes backend's provider/model — the knob for pointing
@@ -982,6 +1024,55 @@ pub async fn ask_question(
         "chat:user",
         json!({ "stream_id": stream_id, "question": question }),
     );
+
+    // When an agent backend (Claude Code / Hermes) is selected, "Ask the
+    // meeting" becomes the Brain2 Agent: it answers using the live transcript
+    // PLUS read access to the user's files (long-term memory). Non-streaming —
+    // emit the full answer on chat:done. Direct backend keeps the streaming
+    // transcript-only chat below.
+    let backend = crate::agent::current_backend();
+    if backend != crate::agent::AgentBackend::Direct {
+        let q = question.clone();
+        let agent_transcript = transcript.clone();
+        let agent_key = settings::require_anthropic().unwrap_or_default();
+        let meeting_for_save = meeting_arc.clone();
+        let dir_for_save = state.meetings_dir();
+        let app_for_task = app_state.clone();
+        tokio::spawn(async move {
+            let root = std::path::PathBuf::from(
+                std::env::var("USERPROFILE").unwrap_or_else(|_| ".".into()),
+            );
+            match crate::agent::run_chat(backend, &q, &agent_transcript, &root, &agent_key).await {
+                Ok(answer) if !answer.trim().is_empty() => {
+                    let answer = answer.trim().to_string();
+                    {
+                        let mut m = meeting_for_save.write();
+                        m.chat.push(ChatMessage {
+                            role: "assistant".into(),
+                            content: answer.clone(),
+                            at: Utc::now(),
+                        });
+                    }
+                    let snap = meeting_for_save.read().clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        storage::save_meeting(&dir_for_save, &snap)
+                    })
+                    .await;
+                    app_for_task
+                        .emit("chat:done", json!({ "stream_id": stream_id, "answer": answer }));
+                }
+                Ok(_) => app_for_task.emit(
+                    "chat:done",
+                    json!({ "stream_id": stream_id, "answer": "(no answer)" }),
+                ),
+                Err(e) => app_for_task.emit(
+                    "chat:error",
+                    json!({ "stream_id": stream_id, "error": format!("agent chat: {e}") }),
+                ),
+            }
+        });
+        return Ok(AskHandle { stream_id });
+    }
 
     let q = question.clone();
     let meeting_for_save = meeting_arc.clone();

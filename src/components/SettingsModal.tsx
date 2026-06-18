@@ -234,6 +234,18 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
     }
   };
 
+  // Persist base URL + model as soon as you tab away (API key untouched), so
+  // the endpoint sticks even without clicking "Save endpoint".
+  const saveOpenaiEndpoint = async () => {
+    try {
+      onSettingsChanged(
+        await api.setOpenAIConfig({ baseUrl: openaiBase, model: openaiModel }),
+      );
+    } catch (err) {
+      onError(`openai config: ${err}`);
+    }
+  };
+
   const submit = async () => {
     setSaving(true);
     try {
@@ -366,6 +378,7 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
               type="text"
               value={openaiBase}
               onChange={(e) => setOpenaiBase(e.target.value)}
+              onBlur={saveOpenaiEndpoint}
               placeholder="https://api.openai.com/v1  ·  http://localhost:11434/v1 (Ollama)"
               autoComplete="off"
             />
@@ -373,6 +386,7 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
               type="text"
               value={openaiModel}
               onChange={(e) => setOpenaiModel(e.target.value)}
+              onBlur={saveOpenaiEndpoint}
               placeholder="gpt-4o-mini  ·  llama3.1:8b  ·  qwen2.5:14b"
               autoComplete="off"
               style={{ marginTop: 6 }}

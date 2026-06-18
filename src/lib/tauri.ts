@@ -87,6 +87,9 @@ export const api = {
     invoke<SettingsView>("set_agent_backend", { backend }),
   setClaudeModel: (model: string) =>
     invoke<SettingsView>("set_claude_model", { model }),
+  // (Re-)warm the selected agent backend so the first "Ask the meeting" query
+  // is fast. Progress arrives on the `agent:status` event.
+  warmAgent: () => invoke<void>("warm_agent"),
   setHermesConfig: (cfg: { provider?: string; model?: string }) =>
     invoke<SettingsView>("set_hermes_config", {
       provider: cfg.provider,
@@ -122,6 +125,7 @@ export type EventHandlers = {
   "chat:done": { stream_id: string; answer: string };
   "chat:error": { stream_id: string; error: string };
   "dg:status": DgStatusPayload;
+  "agent:status": { state: "warming" | "ready" | "error"; error?: string };
   "audio:level": AudioLevel;
   "cost:update": MeetingCost;
   "meeting:paused": { paused: boolean };

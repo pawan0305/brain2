@@ -104,6 +104,12 @@ pub fn run() {
                 }
                 let _ = win.set_ignore_cursor_events(locked);
             }
+
+            // Warm the agent backend in the background so the Brain2 Agent is
+            // hot the moment the user opens "Ask the meeting" — no cold start
+            // mid-meeting. No-op when the backend is Direct.
+            crate::commands::spawn_warm_up(app_handle.clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -164,6 +170,7 @@ pub fn run() {
             commands::set_agent_backend,
             commands::set_hermes_config,
             commands::set_claude_model,
+            commands::warm_agent,
             // Local STT
             commands::set_stt_backend,
             commands::set_whisper_model,

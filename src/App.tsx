@@ -49,6 +49,9 @@ export function App() {
   const [dgStatus, setDgStatus] = useState<DgStatus>("disconnected");
   const [cost, setCost] = useState<MeetingCost | null>(null);
   const [paused, setPaused] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<
+    { state: "warming" | "ready" | "error"; error?: string } | null
+  >(null);
 
   // Per-pane collapse state — persisted in localStorage.
   const [transcriptCollapsed, setTranscriptCollapsed] =
@@ -199,6 +202,7 @@ export function App() {
       on("error", ({ message }) => pushError(message)),
       on("audio:level", (lvl) => setAudioLevel(lvl)),
       on("dg:status", ({ status }) => setDgStatus(status)),
+      on("agent:status", (s) => setAgentStatus(s)),
       on("cost:update", (c) => setCost(c)),
       on("meeting:paused", ({ paused }) => setPaused(paused)),
     );
@@ -394,6 +398,7 @@ export function App() {
                 disabled={!meeting}
                 onAsk={ask}
                 onCollapse={() => setChatCollapsed(true)}
+                agentStatus={agentStatus}
               />
             ),
           },

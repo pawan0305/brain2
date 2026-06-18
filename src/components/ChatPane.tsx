@@ -8,7 +8,15 @@ interface Props {
   disabled: boolean;
   onAsk: (q: string) => void;
   onCollapse?: () => void;
+  /** Brain2 Agent warm-up state; null when the Direct backend is selected. */
+  agentStatus?: { state: "warming" | "ready" | "error"; error?: string } | null;
 }
+
+const AGENT_LABEL: Record<"warming" | "ready" | "error", string> = {
+  warming: "Agent warming…",
+  ready: "Agent ready",
+  error: "Agent error",
+};
 
 export function ChatPane({
   history,
@@ -17,6 +25,7 @@ export function ChatPane({
   disabled,
   onAsk,
   onCollapse,
+  agentStatus,
 }: Props) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -41,6 +50,18 @@ export function ChatPane({
           <span className="pane-sub">
             {disabled ? "no meeting loaded" : `${history.length} messages`}
           </span>
+          {agentStatus && (
+            <span
+              className={`agent-pill ${agentStatus.state}`}
+              title={
+                agentStatus.state === "error"
+                  ? agentStatus.error ?? "agent failed to warm up"
+                  : "Brain2 Agent answers using your files + this transcript"
+              }
+            >
+              ● {AGENT_LABEL[agentStatus.state]}
+            </span>
+          )}
           {onCollapse && (
             <button className="ghost" onClick={onCollapse} title="Collapse">
               ◀
