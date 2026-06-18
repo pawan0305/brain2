@@ -52,6 +52,9 @@ export function App() {
   const [agentStatus, setAgentStatus] = useState<
     { state: "warming" | "ready" | "error"; error?: string } | null
   >(null);
+  const [stack, setStack] = useState<
+    Record<string, { state: "ok" | "starting" | "down"; detail: string }>
+  >({});
 
   // Per-pane collapse state — persisted in localStorage.
   const [transcriptCollapsed, setTranscriptCollapsed] =
@@ -203,6 +206,12 @@ export function App() {
       on("audio:level", (lvl) => setAudioLevel(lvl)),
       on("dg:status", ({ status }) => setDgStatus(status)),
       on("agent:status", (s) => setAgentStatus(s)),
+      on("stack:health", (h) =>
+        setStack((prev) => ({
+          ...prev,
+          [h.component]: { state: h.state, detail: h.detail },
+        })),
+      ),
       on("cost:update", (c) => setCost(c)),
       on("meeting:paused", ({ paused }) => setPaused(paused)),
     );
@@ -305,6 +314,8 @@ export function App() {
         audioLevel={audioLevel}
         dgStatus={dgStatus}
         cost={cost ?? meeting?.cost ?? null}
+        stack={stack}
+        agentStatus={agentStatus}
         onStart={start}
         onStop={stop}
         onTogglePause={async () => {

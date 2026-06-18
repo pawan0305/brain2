@@ -9,6 +9,8 @@ interface Props {
   audioLevel: AudioLevel;
   dgStatus: DgStatus;
   cost: MeetingCost | null;
+  stack?: Record<string, { state: "ok" | "starting" | "down"; detail: string }>;
+  agentStatus?: { state: "warming" | "ready" | "error"; error?: string } | null;
   onStart: () => void;
   onStop: () => void;
   onTogglePause: () => void;
@@ -32,6 +34,59 @@ function estimateCost(c: MeetingCost): number {
   return dg + an;
 }
 
+/** A single dot+label in the stack health strip. */
+function StackPill({
+  label,
+  state,
+  detail,
+}: {
+  label: string;
+  state: "ok" | "starting" | "down" | "idle";
+  detail: string;
+}) {
+  return (
+    <span className={`stack-pill ${state}`} title={`${label}: ${detail}`}>
+      <span className="dot" />
+      {label}
+    </span>
+  );
+}
+
+/** The cockpit health strip: WSL · Ollama · gbrain · Claude. */
+function StackStrip({
+  stack,
+  agentStatus,
+}: {
+  stack: Record<string, { state: "ok" | "starting" | "down"; detail: string }>;
+  agentStatus?: { state: "warming" | "ready" | "error"; error?: string } | null;
+}) {
+  const claude: "ok" | "starting" | "down" | "idle" =
+    agentStatus?.state === "ready"
+      ? "ok"
+      : agentStatus?.state === "warming"
+        ? "starting"
+        : agentStatus?.state === "error"
+          ? "down"
+          : "idle";
+  const claudeDetail =
+    agentStatus?.state === "error"
+      ? (agentStatus.error ?? "warm-up failed")
+      : agentStatus?.state ?? "not started (Direct backend)";
+  const cell = (key: string): { state: "ok" | "starting" | "down" | "idle"; detail: string } =>
+    stack[key] ? { state: stack[key].state, detail: stack[key].detail } : { state: "idle", detail: "checking…" };
+  const wsl = cell("wsl");
+  const ollama = cell("ollama");
+  const gbrain = cell("gbrain");
+  return (
+    <div className="stack-strip" title="Local 2nd-brain stack">
+      <StackPill label="WSL" state={wsl.state} detail={wsl.detail} />
+      <StackPill label="Ollama" state={ollama.state} detail={ollama.detail} />
+      <StackPill label="gbrain" state={gbrain.state} detail={gbrain.detail} />
+      <StackPill label="Claude" state={claude} detail={claudeDetail} />
+    </div>
+  );
+}
+
 function VuBar({ value, color }: { value: number; color: string }) {
   // Compress to log-ish scale so quiet speech is visible.
   const v = Math.max(0, Math.min(1, value));
@@ -51,6 +106,8 @@ export function TopBar({
   audioLevel,
   dgStatus,
   cost,
+  stack = {},
+  agentStatus,
   onStart,
   onStop,
   onTogglePause,
@@ -73,7 +130,8 @@ export function TopBar({
   return (
     <header className="topbar">
       <div className="topbar-left">
-        <span className="brand">OneTrueDutchie</span>
+        <span className="brand">Brain2</span>
+        <StackStrip stack={stack} agentStatus={agentStatus} />
         {meeting ? (
           editingTitle !== null ? (
             <input

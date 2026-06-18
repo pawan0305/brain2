@@ -180,6 +180,13 @@ button.ghost.danger { color: var(--danger); }
 .agent-pill.error { color: var(--danger); }
 .agent-pill.warming { animation: agent-pulse 1.2s ease-in-out infinite; }
 @keyframes agent-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.stack-strip { display: flex; gap: 10px; align-items: center; margin-left: 14px; }
+.stack-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); cursor: default; }
+.stack-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.stack-pill.ok .dot { background: var(--accent-2); }
+.stack-pill.starting .dot { background: var(--accent); animation: agent-pulse 1.2s ease-in-out infinite; }
+.stack-pill.down .dot { background: var(--danger); }
+.stack-pill.idle .dot { background: var(--border); }
 .download-toast {
   margin-top: 6px;
   padding: 6px 10px;

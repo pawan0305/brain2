@@ -15,6 +15,7 @@ mod openai;
 mod settings;
 mod state;
 mod storage;
+mod supervisor;
 
 use std::sync::{Arc, Mutex};
 
@@ -110,6 +111,10 @@ pub fn run() {
             // hot the moment the user opens "Ask the meeting" — no cold start
             // mid-meeting. No-op when the backend is Direct.
             crate::commands::spawn_warm_up(app_handle.clone());
+
+            // One-click cockpit: verify (and best-effort start) the local stack
+            // the 2nd brain runs on — WSL, Ollama, gbrain — and report health.
+            crate::supervisor::spawn_check(app_handle.clone());
 
             Ok(())
         })

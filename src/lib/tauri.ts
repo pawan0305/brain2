@@ -126,6 +126,11 @@ export type EventHandlers = {
   "chat:error": { stream_id: string; error: string };
   "dg:status": DgStatusPayload;
   "agent:status": { state: "warming" | "ready" | "error"; error?: string };
+  "stack:health": {
+    component: string;
+    state: "ok" | "starting" | "down";
+    detail: string;
+  };
   "audio:level": AudioLevel;
   "cost:update": MeetingCost;
   "meeting:paused": { paused: boolean };
