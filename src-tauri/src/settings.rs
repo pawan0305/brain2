@@ -92,6 +92,16 @@ pub struct ApiKeys {
     /// always pass an explicit one. Default "haiku".
     #[serde(default = "default_claude_model")]
     pub claude_model: String,
+    /// Speech-to-text backend: "deepgram" (cloud, low-latency, default) or
+    /// "local_whisper" (on-device whisper.cpp on the GPU — private + accurate,
+    /// ~1-3s behind live). Only honored when the app is built with the
+    /// `local-stt` feature.
+    #[serde(default = "default_stt_backend")]
+    pub stt_backend: String,
+    /// Local Whisper model name for the local_whisper backend (manifest key in
+    /// models.rs, e.g. "large-v3-q5_0").
+    #[serde(default = "default_whisper_model")]
+    pub whisper_model: String,
 }
 
 impl Default for ApiKeys {
@@ -119,6 +129,8 @@ impl Default for ApiKeys {
             hermes_provider: String::new(),
             hermes_model: String::new(),
             claude_model: default_claude_model(),
+            stt_backend: default_stt_backend(),
+            whisper_model: default_whisper_model(),
         }
     }
 }
@@ -133,6 +145,8 @@ fn default_source_language() -> String { "multi".to_string() }
 fn default_llm_provider() -> String { "anthropic".to_string() }
 fn default_agent_backend() -> String { "direct".to_string() }
 fn default_claude_model() -> String { "haiku".to_string() }
+fn default_stt_backend() -> String { "deepgram".to_string() }
+fn default_whisper_model() -> String { "large-v3-q5_0".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsView {
@@ -154,6 +168,8 @@ pub struct SettingsView {
     pub hermes_provider: String,
     pub hermes_model: String,
     pub claude_model: String,
+    pub stt_backend: String,
+    pub whisper_model: String,
 }
 
 /// %APPDATA%\com.brain2.app\keys.json — the same directory Tauri's
@@ -203,7 +219,39 @@ pub fn settings_view() -> Result<SettingsView> {
         hermes_provider: keys.hermes_provider.clone(),
         hermes_model: keys.hermes_model.clone(),
         claude_model: keys.claude_model.clone(),
+        stt_backend: keys.stt_backend.clone(),
+        whisper_model: keys.whisper_model.clone(),
     })
+}
+
+pub fn read_stt_backend() -> String {
+    read_keys()
+        .map(|k| k.stt_backend)
+        .unwrap_or_else(|_| "deepgram".into())
+}
+
+pub fn set_stt_backend(backend: &str) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    keys.stt_backend = match backend.trim().to_ascii_lowercase().as_str() {
+        "local_whisper" | "local" | "whisper" => "local_whisper".to_string(),
+        _ => "deepgram".to_string(),
+    };
+    write_keys_back(&keys)
+}
+
+pub fn read_whisper_model() -> String {
+    let m = read_keys().map(|k| k.whisper_model).unwrap_or_default();
+    if m.trim().is_empty() {
+        "large-v3-q5_0".to_string()
+    } else {
+        m
+    }
+}
+
+pub fn set_whisper_model(model: &str) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    keys.whisper_model = model.trim().to_string();
+    write_keys_back(&keys)
 }
 
 pub fn read_agent_backend() -> String {

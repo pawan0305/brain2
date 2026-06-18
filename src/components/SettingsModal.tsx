@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../lib/tauri";
-import type { SettingsView } from "../lib/types";
+import type { LocalModelInfo, SettingsView } from "../lib/types";
 
 // Curated short list of common Claude output languages. Users can type
 // anything they want via the "Other…" option, but these cover ~95% of
@@ -151,6 +151,59 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
       );
     } catch (err) {
       onError(`hermes config: ${err}`);
+    }
+  };
+
+  // Speech-to-text engine — cloud Deepgram vs on-device Whisper.
+  const [sttBackend, setSttBackend] = useState<string>(
+    settings?.stt_backend || "deepgram",
+  );
+  const [whisperModel, setWhisperModel] = useState<string>(
+    settings?.whisper_model || "large-v3-q5_0",
+  );
+  const [localModels, setLocalModels] = useState<LocalModelInfo[]>([]);
+  const [downloadingModel, setDownloadingModel] = useState<string | null>(null);
+
+  const loadModels = async () => {
+    try {
+      setLocalModels(await api.listLocalModels());
+    } catch (err) {
+      onError(`list models: ${err}`);
+    }
+  };
+  useEffect(() => {
+    if (sttBackend === "local_whisper") loadModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveSttBackend = async (next: string) => {
+    setSttBackend(next);
+    try {
+      onSettingsChanged(
+        await api.setSttBackend(next as "deepgram" | "local_whisper"),
+      );
+      if (next === "local_whisper") loadModels();
+    } catch (err) {
+      onError(`stt backend: ${err}`);
+    }
+  };
+  const saveWhisperModel = async (next: string) => {
+    setWhisperModel(next);
+    try {
+      onSettingsChanged(await api.setWhisperModel(next));
+    } catch (err) {
+      onError(`whisper model: ${err}`);
+    }
+  };
+  const doDownloadModel = async (name: string) => {
+    setDownloadingModel(name);
+    try {
+      await api.downloadModel(name);
+      await loadModels();
+    } catch (err) {
+      onError(`download ${name}: ${err}`);
+    } finally {
+      setDownloadingModel(null);
     }
   };
 
@@ -410,6 +463,61 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
                 Runs <code>hermes -z</code> in WSL. Set provider/model to point
                 the brain at a local LLM (e.g. provider <code>ollama</code>).
                 Requires WSL + Hermes installed.
+              </small>
+            </div>
+          )}
+        </label>
+
+        <label>
+          <span>
+            Speech-to-text
+            <em className="muted"> (transcription engine)</em>
+          </span>
+          <select value={sttBackend} onChange={(e) => saveSttBackend(e.target.value)}>
+            <option value="deepgram">Deepgram (cloud, sub-second live)</option>
+            <option value="local_whisper">Local Whisper (on-device, private)</option>
+          </select>
+          <small>
+            Deepgram = cloud, lowest latency. Local Whisper runs whisper.cpp on
+            your GPU — fully offline (audio never leaves the device) and more
+            accurate, but transcripts land ~1-3 s after each pause. Requires a
+            build with the <code>local-stt</code> feature.
+          </small>
+          {sttBackend === "local_whisper" && (
+            <div style={{ marginTop: 6 }}>
+              <select
+                value={whisperModel}
+                onChange={(e) => saveWhisperModel(e.target.value)}
+              >
+                {localModels.length === 0 && (
+                  <option value={whisperModel}>{whisperModel}</option>
+                )}
+                {localModels.map((m) => (
+                  <option key={m.name} value={m.name}>
+                    {m.name} (~{m.approx_mb} MB){m.downloaded ? " ✓" : " ⬇"}
+                  </option>
+                ))}
+              </select>
+              <div style={{ marginTop: 6 }}>
+                <button
+                  className="ghost"
+                  onClick={() => doDownloadModel(whisperModel)}
+                  disabled={
+                    downloadingModel !== null ||
+                    (localModels.find((m) => m.name === whisperModel)?.downloaded ??
+                      false)
+                  }
+                >
+                  {downloadingModel === whisperModel
+                    ? "Downloading… (large, please wait)"
+                    : localModels.find((m) => m.name === whisperModel)?.downloaded
+                      ? "Downloaded ✓"
+                      : "Download model"}
+                </button>
+              </div>
+              <small>
+                Models download once to app-data. large-v3-q5_0 (~1 GB) is the
+                accuracy default; pick a smaller one for weaker hardware.
               </small>
             </div>
           )}

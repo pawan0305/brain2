@@ -55,6 +55,8 @@ export interface SettingsView {
   hermes_provider: string;
   hermes_model: string;
   claude_model: string;
+  stt_backend: string; // "deepgram" | "local_whisper"
+  whisper_model: string;
 }
 
 export interface MeetingSummaryRow {
@@ -118,4 +120,10 @@ export interface BrainStatus {
   threads: MemoryThread[];
   events: BrainEvent[];
   enabled: boolean;
+}
+
+export interface LocalModelInfo {
+  name: string;
+  approx_mb: number;
+  downloaded: boolean;
 }

@@ -295,6 +295,42 @@ pub async fn set_claude_model(model: String) -> Result<SettingsView, String> {
     settings::settings_view().map_err(|e| e.to_string())
 }
 
+/// Pick the speech-to-text backend: "deepgram" (cloud, low-latency) or
+/// "local_whisper" (on-device whisper.cpp — requires a `local-stt` build).
+#[tauri::command]
+pub async fn set_stt_backend(backend: String) -> Result<SettingsView, String> {
+    settings::set_stt_backend(&backend).map_err(|e| e.to_string())?;
+    settings::settings_view().map_err(|e| e.to_string())
+}
+
+/// Choose the local Whisper model (manifest key, e.g. "large-v3-q5_0").
+#[tauri::command]
+pub async fn set_whisper_model(model: String) -> Result<SettingsView, String> {
+    settings::set_whisper_model(&model).map_err(|e| e.to_string())?;
+    settings::settings_view().map_err(|e| e.to_string())
+}
+
+/// Download a local Whisper model to app-data; returns its path.
+#[tauri::command]
+pub async fn download_model(
+    name: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<String, String> {
+    let dir = state.data_dir.clone();
+    crate::models::ensure_whisper_model(&dir, &name)
+        .await
+        .map(|p| p.to_string_lossy().to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// List local Whisper models + whether each is already downloaded.
+#[tauri::command]
+pub async fn list_local_models(
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<crate::models::ModelInfo>, String> {
+    Ok(crate::models::list_models(&state.data_dir))
+}
+
 // ------- meetings -------
 
 #[tauri::command]
@@ -307,7 +343,13 @@ pub async fn start_meeting(
     if state.current().is_some() {
         return Err("a meeting is already running".into());
     }
-    let dg_key = settings::require_deepgram().map_err(|e| e.to_string())?;
+    // Deepgram key is only required for the cloud STT backend; local Whisper
+    // needs no key.
+    let dg_key = if settings::read_stt_backend() == "local_whisper" {
+        String::new()
+    } else {
+        settings::require_deepgram().map_err(|e| e.to_string())?
+    };
     let an_key = settings::require_llm_credentials().map_err(|e| e.to_string())?;
 
     let title = title.unwrap_or_else(|| default_title());
@@ -998,6 +1040,68 @@ pub async fn ask_question(
 
 // ------- meeting orchestrator -------
 
+/// Spawn the local Whisper STT engine on the meeting's audio broadcast. It
+/// emits the same `DeepgramEvent`s as the Deepgram path — a drop-in STT
+/// producer. The model is ensured/downloaded inside the task so meeting start
+/// isn't blocked.
+#[cfg(feature = "local-stt")]
+fn spawn_local_whisper(
+    state: Arc<AppState>,
+    audio_bcast: tokio::sync::broadcast::Sender<bytes::Bytes>,
+    cancel: CancellationToken,
+    dg_tx: mpsc::Sender<DeepgramEvent>,
+) {
+    let data_dir = state.data_dir.clone();
+    let model_name = settings::read_whisper_model();
+    let lang = settings::read_source_language();
+    tokio::spawn(async move {
+        let model_path = match crate::models::ensure_whisper_model(&data_dir, &model_name).await {
+            Ok(p) => p,
+            Err(e) => {
+                state.emit(
+                    "error",
+                    json!({ "message": format!("Whisper model unavailable: {e}") }),
+                );
+                let _ = dg_tx
+                    .send(DeepgramEvent::Status(deepgram::DgStatus::Disconnected))
+                    .await;
+                return;
+            }
+        };
+        let _ = dg_tx
+            .send(DeepgramEvent::Status(deepgram::DgStatus::Connected))
+            .await;
+        let mut bcast_rx = audio_bcast.subscribe();
+        let (a_tx, a_rx) = mpsc::channel::<bytes::Bytes>(256);
+        let adapter_cancel = cancel.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = adapter_cancel.cancelled() => break,
+                    r = bcast_rx.recv() => match r {
+                        Ok(b) => { if a_tx.send(b).await.is_err() { break; } }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(_) => break,
+                    }
+                }
+            }
+        });
+        let cfg = crate::local_stt::LocalSttConfig {
+            model_path,
+            gpu_device: 1,
+            language: lang,
+        };
+        if let Err(e) = crate::local_stt::run(cfg, a_rx, dg_tx.clone(), cancel.clone()).await {
+            let _ = dg_tx
+                .send(DeepgramEvent::Error(format!("local STT: {e}")))
+                .await;
+        }
+        let _ = dg_tx
+            .send(DeepgramEvent::Status(deepgram::DgStatus::Disconnected))
+            .await;
+    });
+}
+
 async fn run_meeting(
     state: Arc<AppState>,
     handle: Arc<MeetingHandle>,
@@ -1048,7 +1152,29 @@ async fn run_meeting(
     //    through dg_tx to the main meeting loop, which forwards them to
     //    the frontend as a `dg:status` event.
     let (dg_tx, mut dg_rx) = mpsc::channel::<DeepgramEvent>(256);
-    {
+    let use_local = settings::read_stt_backend() == "local_whisper";
+
+    // Local Whisper backend replaces the Deepgram session entirely (same event
+    // stream). Feature-gated; without the feature, fall through with a notice.
+    #[cfg(feature = "local-stt")]
+    let local_spawned = if use_local {
+        spawn_local_whisper(state.clone(), audio_bcast.clone(), cancel.clone(), dg_tx.clone());
+        true
+    } else {
+        false
+    };
+    #[cfg(not(feature = "local-stt"))]
+    let local_spawned = {
+        if use_local {
+            state.emit(
+                "error",
+                json!({ "message": "Local Whisper STT isn't in this build. Rebuild with --features local-stt, or set STT to Deepgram in Settings." }),
+            );
+        }
+        false
+    };
+
+    if !local_spawned {
         let cfg_template = DeepgramConfig {
             api_key: dg_key,
             language: settings::read_source_language(),

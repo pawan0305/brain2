@@ -7,6 +7,9 @@ mod deepgram;
 mod factory;
 mod forge;
 mod llm;
+#[cfg(feature = "local-stt")]
+mod local_stt;
+mod models;
 mod openai;
 mod settings;
 mod state;
@@ -161,6 +164,11 @@ pub fn run() {
             commands::set_agent_backend,
             commands::set_hermes_config,
             commands::set_claude_model,
+            // Local STT
+            commands::set_stt_backend,
+            commands::set_whisper_model,
+            commands::download_model,
+            commands::list_local_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

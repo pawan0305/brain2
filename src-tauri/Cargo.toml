@@ -47,5 +47,10 @@ windows = { version = "0.58", features = [
     "Win32_Devices_FunctionDiscovery",
 ] }
 
+# Local STT (whisper.cpp via whisper-rs, Vulkan on the Arc 140T). Optional —
+# built only with `--features local-stt`; keeps the default/CI/macOS builds light.
+whisper-rs = { version = "0.16", optional = true, default-features = false, features = ["vulkan"] }
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+local-stt = ["dep:whisper-rs"]

@@ -4,6 +4,7 @@ import type {
   AudioLevel,
   BrainStatus,
   DgStatusPayload,
+  LocalModelInfo,
   Meeting,
   MeetingCost,
   MeetingSummaryRow,
@@ -99,6 +100,13 @@ export const api = {
     invoke<BrainStatus>("brain_mark_action_done", { id }),
   brainWrapUp: (meetingId: string, meetingTitle: string, fullTranscript: string) =>
     invoke<string>("brain_wrap_up", { meetingId, meetingTitle, fullTranscript }),
+  // Local STT (speech-to-text engine selection + model management).
+  setSttBackend: (backend: "deepgram" | "local_whisper") =>
+    invoke<SettingsView>("set_stt_backend", { backend }),
+  setWhisperModel: (model: string) =>
+    invoke<SettingsView>("set_whisper_model", { model }),
+  downloadModel: (name: string) => invoke<string>("download_model", { name }),
+  listLocalModels: () => invoke<LocalModelInfo[]>("list_local_models"),
 };
 
 export type EventHandlers = {
