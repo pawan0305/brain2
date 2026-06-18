@@ -6,6 +6,7 @@ mod commands;
 mod deepgram;
 mod factory;
 mod forge;
+mod gbrain;
 mod llm;
 #[cfg(feature = "local-stt")]
 mod local_stt;

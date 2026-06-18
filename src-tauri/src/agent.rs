@@ -157,18 +157,49 @@ pub async fn run_chat(
     api_key: &str,
 ) -> Result<String> {
     let persona = persona();
-    let prompt = format!(
-        "{persona}\n\nYou are Brain2 answering a question for the user during or after a meeting \
-— their 2nd brain. You have READ access to their files under your working directory, including \
-past Brain2 meetings at `AppData\\Local\\com.brain2.app\\meetings` and any long-term notes. Use \
-your file tools (Read/Grep/Glob) to look across their history when it helps, then answer \
-concisely in plain text (no markdown). If the meeting and their files don't contain the answer, \
-say so rather than guessing. Don't read credential/secret files.\n\n\
-=== CURRENT MEETING TRANSCRIPT ===\n{transcript}\n\n=== QUESTION ===\n{question}"
-    );
     match backend {
-        AgentBackend::ClaudeCode => claude_code(&prompt, api_key, Some(read_root), false).await,
-        AgentBackend::Hermes => hermes(&prompt, Some(read_root)).await,
+        AgentBackend::ClaudeCode => {
+            // RAG, not sweep: pull the handful of relevant pages from the local
+            // gbrain (a maintained, incrementally-synced vector DB) and hand
+            // them to Claude, instead of letting it cold-grep the whole profile
+            // on every question. Retrieval runs on-device. If gbrain is
+            // unavailable or finds nothing, fall back to giving Claude its file
+            // tools so the feature still works.
+            let knowledge = crate::gbrain::retrieve(question).await.unwrap_or_default();
+            let prompt = if knowledge.trim().is_empty() {
+                format!(
+                    "{persona}\n\nYou are Brain2 answering a question for the user during or after a \
+meeting — their 2nd brain. You have READ access to their files under your working directory, \
+including past Brain2 meetings at `AppData\\Local\\com.brain2.app\\meetings`. Use your file tools \
+(Read/Grep/Glob) sparingly to look across their history when it helps, then answer concisely in \
+plain text (no markdown). If you can't find the answer, say so rather than guessing. Don't read \
+credential/secret files.\n\n\
+=== CURRENT MEETING TRANSCRIPT ===\n{transcript}\n\n=== QUESTION ===\n{question}"
+                )
+            } else {
+                format!(
+                    "{persona}\n\nYou are Brain2 — the user's 2nd brain — answering a question during \
+or after a meeting. Below is the most relevant knowledge retrieved from their long-term brain \
+(gbrain), followed by the current meeting transcript. This is already the relevant slice of \
+everything they've been up to — answer from it. Reply concisely in plain text (no markdown). If \
+the answer genuinely isn't in the knowledge or the transcript, say so rather than guessing.\n\n\
+=== LONG-TERM KNOWLEDGE (retrieved from gbrain) ===\n{knowledge}\n\n\
+=== CURRENT MEETING TRANSCRIPT ===\n{transcript}\n\n=== QUESTION ===\n{question}"
+                )
+            };
+            claude_code(&prompt, api_key, Some(read_root), false).await
+        }
+        AgentBackend::Hermes => {
+            // Hermes reaches its own gbrain through its skills — just hand it
+            // the transcript + question and let it draw on what it knows.
+            let prompt = format!(
+                "{persona}\n\nYou are Brain2 answering a question for the user during or after a \
+meeting — their 2nd brain. Draw on your knowledge of their projects and history (your gbrain) plus \
+the transcript below. Answer concisely in plain text (no markdown).\n\n\
+=== CURRENT MEETING TRANSCRIPT ===\n{transcript}\n\n=== QUESTION ===\n{question}"
+            );
+            hermes(&prompt, Some(read_root)).await
+        }
         AgentBackend::Direct => Err(anyhow!(
             "the Direct backend has no agentic chat; the built-in chat handles it"
         )),
