@@ -115,7 +115,7 @@ pub async fn run(
                     // (silence before any speech is dropped)
                     frame.clear();
                     if buf.len() >= MAX_UTTERANCE_SAMPLES {
-                        transcribe_and_emit(&ctx, &mut buf, &cfg, &out).await;
+                        transcribe_and_emit(&ctx, &mut buf, &out, &allowed, &mut sticky_lang).await;
                         had_speech = false;
                         silence_frames = 0;
                     }
@@ -132,7 +132,7 @@ pub async fn run(
 
     // Flush whatever is left when the meeting stops.
     if !buf.is_empty() {
-        transcribe_and_emit(&ctx, &mut buf, &cfg, &out).await;
+        transcribe_and_emit(&ctx, &mut buf, &out, &allowed, &mut sticky_lang).await;
     }
     let _ = out.send(DeepgramEvent::Closed).await;
     Ok(())
