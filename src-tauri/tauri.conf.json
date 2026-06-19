@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Brain2",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "identifier": "com.brain2.app",
   "build": {
     "beforeDevCommand": "npm run dev",

@@ -70,6 +70,21 @@ pub async fn run(
     let mut silence_frames = 0usize;
     let mut bytes_since_stat: u64 = 0;
 
+    // Language handling, derived from the source-language setting:
+    //   "multi"/empty   → unconstrained auto-detect (any of Whisper's 99 langs)
+    //   single ("en")   → pinned to that language
+    //   list ("en,nl")  → auto-detect, but CONSTRAINED to those languages: if
+    //                     Whisper guesses anything else (the random Portuguese/
+    //                     Polish garbage on a mixed meeting) the chunk is
+    //                     re-decoded as the meeting's sticky in-set language.
+    let allowed: Vec<String> = cfg
+        .language
+        .split(',')
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty() && s != "multi")
+        .collect();
+    let mut sticky_lang: Option<String> = None;
+
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
@@ -92,7 +107,7 @@ pub async fn run(
                         silence_frames += 1;
                         buf.extend_from_slice(&frame);
                         if silence_frames >= SILENCE_FRAMES_FLUSH {
-                            transcribe_and_emit(&ctx, &mut buf, &cfg, &out).await;
+                            transcribe_and_emit(&ctx, &mut buf, &out, &allowed, &mut sticky_lang).await;
                             had_speech = false;
                             silence_frames = 0;
                         }
@@ -133,11 +148,18 @@ fn rms(frame: &[f32]) -> f32 {
 
 /// Transcribe the buffered utterance on a blocking thread and emit it as a
 /// final segment. Takes the buffer (leaving it empty for the next utterance).
+///
+/// `allowed` (from the source-language setting) controls language handling:
+/// empty = unconstrained auto-detect; one entry = pinned; ≥2 entries = auto but
+/// constrained to that set. `sticky` carries the last in-set language across
+/// calls so an out-of-set mis-detection re-decodes to the language actually
+/// being spoken.
 async fn transcribe_and_emit(
     ctx: &Arc<WhisperContext>,
     buf: &mut Vec<f32>,
-    cfg: &LocalSttConfig,
     out: &mpsc::Sender<DeepgramEvent>,
+    allowed: &[String],
+    sticky: &mut Option<String>,
 ) {
     let samples = std::mem::take(buf);
     if samples.len() < MIN_UTTERANCE_SAMPLES {
@@ -145,60 +167,82 @@ async fn transcribe_and_emit(
     }
     let secs = samples.len() as f64 / SAMPLE_RATE as f64;
     let ctx = ctx.clone();
-    let lang = cfg.language.clone();
+    let allowed_v = allowed.to_vec();
+    let sticky_in = sticky.clone();
 
     let result = tokio::task::spawn_blocking(move || -> Result<(String, Option<String>)> {
-        let mut state = ctx.create_state().map_err(|e| anyhow!("create state: {e}"))?;
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        let auto = lang == "multi" || lang.is_empty();
-        let lang_code: &str = if auto { "auto" } else { lang.as_str() };
-        params.set_language(Some(lang_code));
-        params.set_print_progress(false);
-        params.set_print_realtime(false);
-        // Anti-hallucination on short VAD chunks: don't carry prior (possibly
-        // wrong-language) text as context, decode greedily at temp 0, and drop
-        // blank / non-speech tokens. Without these, a half-second English blip
-        // gets "transcribed" as foreign-language garbage (e.g. "Chuj chucha").
-        params.set_no_context(true);
-        params.set_temperature(0.0);
-        params.set_suppress_blank(true);
-        params.set_suppress_nst(true);
-        state.full(params, &samples).map_err(|e| anyhow!("transcribe: {e}"))?;
-        let n = state.full_n_segments();
-        let mut text = String::new();
-        for i in 0..n {
-            if let Some(seg) = state.get_segment(i) {
-                if let Ok(s) = seg.to_str_lossy() {
-                    text.push_str(&s);
+        // One decode pass. `force` = a language code, or "auto" to let Whisper
+        // detect. Anti-hallucination params (no-context, temp 0, suppress blank/
+        // non-speech) keep short VAD chunks from becoming foreign-language
+        // garbage like "Chuj chucha".
+        let decode = |force: &str| -> Result<(String, String)> {
+            let mut state = ctx.create_state().map_err(|e| anyhow!("create state: {e}"))?;
+            let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+            params.set_language(Some(force));
+            params.set_print_progress(false);
+            params.set_print_realtime(false);
+            params.set_no_context(true);
+            params.set_temperature(0.0);
+            params.set_suppress_blank(true);
+            params.set_suppress_nst(true);
+            state.full(params, &samples).map_err(|e| anyhow!("transcribe: {e}"))?;
+            let n = state.full_n_segments();
+            let mut text = String::new();
+            for i in 0..n {
+                if let Some(seg) = state.get_segment(i) {
+                    if let Ok(s) = seg.to_str_lossy() {
+                        text.push_str(&s);
+                    }
                 }
             }
-        }
-        // When auto-detecting, report the language Whisper actually detected so
-        // the pipeline can skip needlessly "translating" already-English speech
-        // (which a weak cleanup model otherwise mangles).
-        let detected = if auto {
-            whisper_rs::get_lang_str(state.full_lang_id_from_state()).map(|s| s.to_string())
-        } else {
-            None
+            let det = if force == "auto" {
+                whisper_rs::get_lang_str(state.full_lang_id_from_state())
+                    .unwrap_or("")
+                    .to_string()
+            } else {
+                force.to_string()
+            };
+            Ok((text.trim().to_string(), det))
         };
-        Ok((text.trim().to_string(), detected))
+
+        let pinned = allowed_v.len() == 1;
+        let constrained = allowed_v.len() >= 2;
+        let first = if pinned { allowed_v[0].as_str() } else { "auto" };
+        let (mut text, mut det) = decode(first)?;
+
+        // Constrained: if Whisper picked a language outside the allowed set it
+        // almost certainly mis-detected — re-decode forcing the sticky in-set
+        // language (or the first allowed one).
+        if constrained && !allowed_v.iter().any(|a| det.starts_with(a.as_str())) {
+            let forced = sticky_in
+                .filter(|s| allowed_v.iter().any(|a| s.starts_with(a.as_str())))
+                .unwrap_or_else(|| allowed_v[0].clone());
+            let (t2, d2) = decode(&forced)?;
+            text = t2;
+            det = d2;
+        }
+
+        let detected = if det.is_empty() { None } else { Some(det) };
+        Ok((text, detected))
     })
     .await;
 
     match result {
         Ok(Ok((text, detected))) if !text.is_empty() => {
-            let language = if cfg.language != "multi" && !cfg.language.is_empty() {
-                Some(cfg.language.clone())
-            } else {
-                detected
-            };
+            // Remember the last in-set language so a later mis-detect re-decodes
+            // to what's actually being spoken.
+            if let Some(d) = &detected {
+                if allowed.is_empty() || allowed.iter().any(|a| d.starts_with(a.as_str())) {
+                    *sticky = Some(d.clone());
+                }
+            }
             let _ = out
                 .send(DeepgramEvent::Final {
                     text,
                     start: 0.0,
                     duration: secs,
                     speech_final: true,
-                    language,
+                    language: detected,
                     speaker: None,
                 })
                 .await;

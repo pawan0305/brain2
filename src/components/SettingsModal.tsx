@@ -33,6 +33,7 @@ const LANG_OPTIONS = [
 // (more accurate when you know what's being spoken). Label → code.
 const SOURCE_LANG_OPTIONS: { label: string; code: string }[] = [
   { label: "Auto-detect (multilingual)", code: "multi" },
+  { label: "Dutch + English (auto, local Whisper)", code: "en,nl" },
   { label: "Dutch", code: "nl" },
   { label: "Flemish (Belgian Dutch)", code: "nl-BE" },
   { label: "English", code: "en" },
