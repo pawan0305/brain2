@@ -19,7 +19,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font: 14px "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
 .app {
@@ -247,7 +247,7 @@ button.ghost.danger { color: var(--danger); }
 /* summary */
 .summary-text {
   white-space: pre-wrap;
-  font-family: -apple-system, system-ui, sans-serif;
+  font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 13.5px;
   line-height: 1.55;
   margin: 0;
@@ -561,7 +561,7 @@ button.ghost.danger { color: var(--danger); }
   border: none;
   outline: none;
   color: inherit;
-  font: 13px / 1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  font: 13px / 1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
   padding: 0;
 }
 .notes-pane .pane-body { display: flex; flex-direction: column; }

@@ -30,12 +30,15 @@ pub struct LocalSttConfig {
 
 const SAMPLE_RATE: usize = 16_000;
 const FRAME: usize = 1600; // 100 ms @ 16 kHz
-/// ~700 ms of silence after speech ends an utterance.
-const SILENCE_FRAMES_FLUSH: usize = 7;
+/// ~1 s of silence after speech ends an utterance. Longer than 700 ms so
+/// natural sentences aren't chopped into sub-second fragments — short chunks
+/// wreck Whisper's per-utterance language detection.
+const SILENCE_FRAMES_FLUSH: usize = 10;
 /// Safety flush so a long monologue still commits periodically.
 const MAX_UTTERANCE_SAMPLES: usize = SAMPLE_RATE * 20;
-/// Ignore sub-half-second blips (coughs, clicks).
-const MIN_UTTERANCE_SAMPLES: usize = SAMPLE_RATE / 2;
+/// Ignore sub-second blips (coughs, clicks) and give Whisper enough audio to
+/// detect language reliably (it misdetects badly on half-second chunks).
+const MIN_UTTERANCE_SAMPLES: usize = SAMPLE_RATE;
 /// Normalized-RMS speech/silence threshold (tunable; mic-gain dependent).
 const RMS_THRESHOLD: f32 = 0.012;
 /// Emit a cost Stats event roughly every 5 s of audio.
@@ -144,17 +147,22 @@ async fn transcribe_and_emit(
     let ctx = ctx.clone();
     let lang = cfg.language.clone();
 
-    let result = tokio::task::spawn_blocking(move || -> Result<String> {
+    let result = tokio::task::spawn_blocking(move || -> Result<(String, Option<String>)> {
         let mut state = ctx.create_state().map_err(|e| anyhow!("create state: {e}"))?;
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        let lang_code: &str = if lang != "multi" && !lang.is_empty() {
-            lang.as_str()
-        } else {
-            "auto"
-        };
+        let auto = lang == "multi" || lang.is_empty();
+        let lang_code: &str = if auto { "auto" } else { lang.as_str() };
         params.set_language(Some(lang_code));
         params.set_print_progress(false);
         params.set_print_realtime(false);
+        // Anti-hallucination on short VAD chunks: don't carry prior (possibly
+        // wrong-language) text as context, decode greedily at temp 0, and drop
+        // blank / non-speech tokens. Without these, a half-second English blip
+        // gets "transcribed" as foreign-language garbage (e.g. "Chuj chucha").
+        params.set_no_context(true);
+        params.set_temperature(0.0);
+        params.set_suppress_blank(true);
+        params.set_suppress_nst(true);
         state.full(params, &samples).map_err(|e| anyhow!("transcribe: {e}"))?;
         let n = state.full_n_segments();
         let mut text = String::new();
@@ -165,16 +173,24 @@ async fn transcribe_and_emit(
                 }
             }
         }
-        Ok(text.trim().to_string())
+        // When auto-detecting, report the language Whisper actually detected so
+        // the pipeline can skip needlessly "translating" already-English speech
+        // (which a weak cleanup model otherwise mangles).
+        let detected = if auto {
+            whisper_rs::get_lang_str(state.full_lang_id_from_state()).map(|s| s.to_string())
+        } else {
+            None
+        };
+        Ok((text.trim().to_string(), detected))
     })
     .await;
 
     match result {
-        Ok(Ok(text)) if !text.is_empty() => {
+        Ok(Ok((text, detected))) if !text.is_empty() => {
             let language = if cfg.language != "multi" && !cfg.language.is_empty() {
                 Some(cfg.language.clone())
             } else {
-                None
+                detected
             };
             let _ = out
                 .send(DeepgramEvent::Final {
