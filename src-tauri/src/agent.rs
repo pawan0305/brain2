@@ -81,6 +81,34 @@ pub fn persona() -> String {
     DEFAULT_PERSONA.to_string()
 }
 
+/// (Re)write and return the path to the gbrain MCP config for Claude Code. It
+/// points Claude at `gbrain serve` (stdio MCP, running inside WSL) so the agent
+/// gets live gbrain tools — search / query / get_page / list_pages / put_page —
+/// to read AND write the brain mid-conversation. Returns None if app-data is
+/// unresolvable.
+fn gbrain_mcp_config() -> Option<PathBuf> {
+    let base = std::env::var("LOCALAPPDATA").ok()?;
+    let dir = PathBuf::from(base).join("com.brain2.app");
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join("gbrain-mcp.json");
+    let cfg = r#"{
+  "mcpServers": {
+    "gbrain": {
+      "command": "wsl",
+      "args": ["--", "bash", "-lc", "export PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin; exec gbrain serve"]
+    }
+  }
+}"#;
+    std::fs::write(&path, cfg).ok()?;
+    Some(path)
+}
+
+/// The gbrain MCP tools Claude Code may call unattended. Read + write-new, but
+/// deliberately NOT delete_page/purge — an unattended chat shouldn't destroy
+/// pages.
+const GBRAIN_MCP_TOOLS: &str =
+    "mcp__gbrain__query mcp__gbrain__search mcp__gbrain__get_page mcp__gbrain__list_pages mcp__gbrain__put_page";
+
 /// Write the default persona to the user-editable location on first run, so it
 /// is discoverable and editable. Called once at startup.
 pub fn seed_persona() {
@@ -109,7 +137,7 @@ pub async fn run_text(
         AgentBackend::Direct => direct_haiku(persona, system, user, api_key).await,
         AgentBackend::ClaudeCode => {
             let prompt = format!("{persona}\n\n{system}\n\n{user}");
-            claude_code(&prompt, api_key, None, false).await
+            claude_code(&prompt, api_key, None, false, false).await
         }
         AgentBackend::Hermes => {
             let prompt = format!("{persona}\n\n{system}\n\n{user}");
@@ -137,7 +165,7 @@ pub async fn run_in_workspace(
          commit — the user reviews the diff.\n\nREQUEST:\n{instruction}"
     );
     match backend {
-        AgentBackend::ClaudeCode => claude_code(&prompt, api_key, Some(workspace), true).await,
+        AgentBackend::ClaudeCode => claude_code(&prompt, api_key, Some(workspace), true, false).await,
         AgentBackend::Hermes => hermes(&prompt, Some(workspace)).await,
         AgentBackend::Direct => Err(anyhow!(
             "the Direct backend has no workspace agent; use the built-in Forge patch flow"
@@ -145,10 +173,11 @@ pub async fn run_in_workspace(
     }
 }
 
-/// Agentic "Ask the meeting" — answer using the live transcript PLUS read
-/// access to the user's files (long-term memory). Claude Code / Hermes run with
-/// `read_root` as their working directory and use their own file tools
-/// (Read/Grep/Glob) to look across past meetings and notes. Read-only.
+/// Agentic "Ask the meeting" — answer using the live transcript PLUS the user's
+/// long-term brain. For Claude Code: gbrain is pre-queried (fast RAG) and also
+/// attached as an MCP server, so the agent can read (search/query/get_page) and
+/// write (put_page) the brain live, with file tools as a fallback. Hermes uses
+/// its own gbrain. `read_root` is the working directory for file access.
 pub async fn run_chat(
     backend: AgentBackend,
     question: &str,
@@ -169,25 +198,26 @@ pub async fn run_chat(
             let prompt = if knowledge.trim().is_empty() {
                 format!(
                     "{persona}\n\nYou are Brain2 answering a question for the user during or after a \
-meeting — their 2nd brain. You have READ access to their files under your working directory, \
-including past Brain2 meetings at `AppData\\Local\\com.brain2.app\\meetings`. Use your file tools \
-(Read/Grep/Glob) sparingly to look across their history when it helps, then answer concisely in \
-plain text (no markdown). If you can't find the answer, say so rather than guessing. Don't read \
-credential/secret files.\n\n\
+meeting — their 2nd brain. You have the user's live gbrain knowledge base as tools (search, query, \
+get_page, list_pages) — use them to look across their long-term history; use put_page only if the \
+user asks you to remember something. You also have READ access to their files under your working \
+directory (Read/Grep/Glob) as a fallback. Answer concisely in plain text (no markdown). If you \
+can't find the answer, say so rather than guessing. Don't read credential/secret files.\n\n\
 === CURRENT MEETING TRANSCRIPT ===\n{transcript}\n\n=== QUESTION ===\n{question}"
                 )
             } else {
                 format!(
                     "{persona}\n\nYou are Brain2 — the user's 2nd brain — answering a question during \
 or after a meeting. Below is the most relevant knowledge retrieved from their long-term brain \
-(gbrain), followed by the current meeting transcript. This is already the relevant slice of \
-everything they've been up to — answer from it. Reply concisely in plain text (no markdown). If \
-the answer genuinely isn't in the knowledge or the transcript, say so rather than guessing.\n\n\
+(gbrain), followed by the current meeting transcript — answer from it. You ALSO have live gbrain \
+tools (search, query, get_page, list_pages) if you need to dig beyond the retrieved slice, and \
+put_page to save a note when the user asks you to remember something. Reply concisely in plain text \
+(no markdown). If the answer genuinely isn't available, say so rather than guessing.\n\n\
 === LONG-TERM KNOWLEDGE (retrieved from gbrain) ===\n{knowledge}\n\n\
 === CURRENT MEETING TRANSCRIPT ===\n{transcript}\n\n=== QUESTION ===\n{question}"
                 )
             };
-            claude_code(&prompt, api_key, Some(read_root), false).await
+            claude_code(&prompt, api_key, Some(read_root), false, true).await
         }
         AgentBackend::Hermes => {
             // Hermes reaches its own gbrain through its skills — just hand it
@@ -216,7 +246,7 @@ the transcript below. Answer concisely in plain text (no markdown).\n\n\
 pub async fn warm_up(read_root: &Path, api_key: &str) -> Result<()> {
     const PROBE: &str = "Reply with exactly the single word: ready";
     match current_backend() {
-        AgentBackend::ClaudeCode => claude_code(PROBE, api_key, Some(read_root), false)
+        AgentBackend::ClaudeCode => claude_code(PROBE, api_key, Some(read_root), false, false)
             .await
             .map(|_| ()),
         AgentBackend::Hermes => hermes(PROBE, Some(read_root)).await.map(|_| ()),
@@ -270,6 +300,7 @@ async fn claude_code(
     api_key: &str,
     cwd: Option<&Path>,
     allow_edits: bool,
+    mcp: bool,
 ) -> Result<String> {
     let mut cmd = claude_base_command();
     cmd.arg("-p").arg("--output-format").arg("text");
@@ -283,6 +314,16 @@ async fn claude_code(
         // Forge: auto-accept edits — the user reviews the diff afterwards via
         // the Approve/Reject gate. (Chat runs read-only: allow_edits = false.)
         cmd.arg("--permission-mode").arg("acceptEdits");
+    }
+    if mcp {
+        // Attach the local gbrain knowledge base as an MCP server so the agent
+        // can read + write the brain live. Pre-approve its tools so the headless
+        // run doesn't block on a permission prompt. If the config can't be
+        // written we just skip it — the RAG context in the prompt still stands.
+        if let Some(cfg) = gbrain_mcp_config() {
+            cmd.arg("--mcp-config").arg(&cfg);
+            cmd.arg("--allowedTools").arg(GBRAIN_MCP_TOOLS);
+        }
     }
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
