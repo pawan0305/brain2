@@ -1076,14 +1076,23 @@ pub async fn ask_question(
                     app_for_task
                         .emit("chat:done", json!({ "stream_id": stream_id, "answer": answer }));
                 }
-                Ok(_) => app_for_task.emit(
-                    "chat:done",
-                    json!({ "stream_id": stream_id, "answer": "(no answer)" }),
-                ),
-                Err(e) => app_for_task.emit(
-                    "chat:error",
-                    json!({ "stream_id": stream_id, "error": format!("agent chat: {e}") }),
-                ),
+                // No usable answer / error: drop the orphan user message so the
+                // saved transcript has no dangling question, and still resolve
+                // the stream so the UI spinner clears.
+                Ok(_) => {
+                    meeting_for_save.write().chat.pop();
+                    app_for_task.emit(
+                        "chat:done",
+                        json!({ "stream_id": stream_id, "answer": "(no answer)" }),
+                    );
+                }
+                Err(e) => {
+                    meeting_for_save.write().chat.pop();
+                    app_for_task.emit(
+                        "chat:error",
+                        json!({ "stream_id": stream_id, "error": format!("agent chat: {e}") }),
+                    );
+                }
             }
         });
         return Ok(AskHandle { stream_id });
@@ -1101,6 +1110,7 @@ pub async fn ask_question(
         });
 
         let mut full = String::new();
+        let mut errored = false;
         while let Some(evt) = rx.recv().await {
             match evt {
                 ChatStreamEvent::Delta(d) => {
@@ -1112,6 +1122,7 @@ pub async fn ask_question(
                     full = text;
                 }
                 ChatStreamEvent::Error(err) => {
+                    errored = true;
                     app_for_task.emit(
                         "chat:error",
                         json!({ "stream_id": stream_id, "error": err }),
@@ -1121,6 +1132,12 @@ pub async fn ask_question(
         }
         let _ = claude_task.await;
 
+        if errored {
+            // The error was already signaled; don't also emit a success for the
+            // same stream. Drop the orphan user message from the transcript.
+            meeting_for_save.write().chat.pop();
+            return;
+        }
         if !full.is_empty() {
             {
                 let mut m = meeting_for_save.write();
@@ -1137,6 +1154,14 @@ pub async fn ask_question(
             app_for_task.emit(
                 "chat:done",
                 json!({ "stream_id": stream_id, "answer": full }),
+            );
+        } else {
+            // No content — drop the orphan user message, but still resolve the
+            // stream so the UI spinner always clears.
+            meeting_for_save.write().chat.pop();
+            app_for_task.emit(
+                "chat:done",
+                json!({ "stream_id": stream_id, "answer": "(no answer)" }),
             );
         }
     });

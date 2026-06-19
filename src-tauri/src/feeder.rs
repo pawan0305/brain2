@@ -17,6 +17,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
@@ -208,10 +209,20 @@ async fn git_recent(repo: &str, since: &str) -> Result<String> {
 
 // ── gbrain + file helpers ────────────────────
 
+/// Serializes feeder-side gbrain imports within the process, so back-to-back
+/// meetings and the project sweep don't fire redundant concurrent full-folder
+/// imports. (gbrain itself tolerates concurrent imports — verified — this just
+/// avoids the wasted duplicate work.)
+static IMPORT_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
 /// Re-import the Knowledge folder into gbrain and embed new chunks — the same
 /// incremental pair the 30-min cron runs, fired immediately so a fresh note is
 /// searchable in seconds.
 async fn import_into_gbrain() -> Result<()> {
+    let _guard = IMPORT_LOCK
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
     let wsl_kdir = to_wsl_path(&knowledge_dir());
     let script = format!(
         "{GBRAIN_PATH} gbrain import '{wsl_kdir}' --no-embed >/dev/null 2>&1; \
