@@ -1,6 +1,6 @@
 [package]
 name = "brain2"
-version = "0.6.0"
+version = "0.6.1"
 description = "Brain2 — Your 2nd brain during conversations. Live transcription, proactive AI co-pilot, self-improving desktop app."
 authors = ["you"]
 edition = "2021"
