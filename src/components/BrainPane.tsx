@@ -100,8 +100,8 @@ export function BrainPane({
           <button onClick={doWrapUp} disabled={busy || !meeting}>
             {busy ? "…" : "Wrap up"}
           </button>
-          <button className="close-btn" onClick={onCollapse} title="Collapse">
-            ×
+          <button className="ghost" onClick={onCollapse} title="Collapse">
+            ◀
           </button>
         </div>
       </div>

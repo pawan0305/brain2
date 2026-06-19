@@ -88,12 +88,16 @@ Brain2 (Tauri 2, portable .exe)
 
 ## Configuration
 
-| Env var | Default | Description |
-|---------|---------|-------------|
-| `OTD_LLM_BACKEND` | `anthropic` | LLM backend: `anthropic`, `openai`, or `ollama` |
-| `OTD_ANTHROPIC_MODEL` | `claude-haiku-4-5` | Claude model |
-| `OTD_OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint |
-| `OTD_OLLAMA_MODEL` | `phi3:mini` | Ollama model |
+All configuration is in-app via **Settings** (gear icon) and is stored in
+`%APPDATA%\com.brain2.app\keys.json`:
+
+- **API keys** — Deepgram (cloud STT) and Anthropic (agent/LLM).
+- **STT engine** — Deepgram (cloud) or local Whisper (on-device, Vulkan).
+- **LLM provider** — Anthropic, or any OpenAI-compatible endpoint (Ollama, etc.).
+- **Brain2 agent backend** — Direct, Claude Code, or Hermes.
+- **Languages** — source + target, custom vocabulary, subtitles overlay.
+
+See [RELEASES.md](RELEASES.md) for prebuilt downloads.
 
 ## License
 

@@ -176,12 +176,12 @@ export function TranscriptPane({
             <div className="segment-time">{fmtTime(s.started_at)}</div>
             <div className={`segment-cols${showEnglish ? "" : " single"}`}>
               <div className="col nl">
-                {showEnglish && <div className="lang-label">NL</div>}
+                {showEnglish && <div className="lang-label">Source</div>}
                 <div className="text">{s.dutch || <em>…</em>}</div>
               </div>
               {showEnglish && (
                 <div className="col en">
-                  <div className="lang-label">EN</div>
+                  <div className="lang-label">Translated</div>
                   <div className="text">
                     {s.english ?? (s.is_final ? <em className="muted">translating…</em> : <em className="muted">—</em>)}
                   </div>
