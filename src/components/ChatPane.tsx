@@ -45,7 +45,7 @@ export function ChatPane({
   return (
     <section className="pane chat-pane">
       <header className="pane-header">
-        <h2>Ask the meeting</h2>
+        <h2>Talk to the brain</h2>
         <div className="pane-sub-row">
           <span className="pane-sub">
             {disabled ? "no meeting loaded" : `${history.length} messages`}

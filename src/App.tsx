@@ -422,7 +422,7 @@ export function App() {
           },
           {
             id: "chat",
-            title: "Ask the meeting",
+            title: "Talk to the brain",
             collapsed: chatCollapsed,
             onToggle: () => setChatCollapsed(!chatCollapsed),
             content: (
