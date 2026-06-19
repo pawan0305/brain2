@@ -11,6 +11,7 @@ interface Props {
   cost: MeetingCost | null;
   stack?: Record<string, { state: "ok" | "starting" | "down"; detail: string }>;
   agentStatus?: { state: "warming" | "ready" | "error"; error?: string } | null;
+  feedNote?: string | null;
   onStart: () => void;
   onStop: () => void;
   onTogglePause: () => void;
@@ -109,6 +110,7 @@ export function TopBar({
   cost,
   stack = {},
   agentStatus,
+  feedNote,
   onStart,
   onStop,
   onTogglePause,
@@ -147,6 +149,7 @@ export function TopBar({
             🧠 Feed: {settings.brain_feed_enabled ? "on" : "off"}
           </button>
         )}
+        {feedNote && <span className="pane-sub feed-note">{feedNote}</span>}
         {meeting ? (
           editingTitle !== null ? (
             <input

@@ -55,6 +55,8 @@ export function App() {
   const [stack, setStack] = useState<
     Record<string, { state: "ok" | "starting" | "down"; detail: string }>
   >({});
+  const [feedNote, setFeedNote] = useState<string | null>(null);
+  const feedTimer = useRef<number | null>(null);
 
   // Per-pane collapse state — persisted in localStorage.
   const [transcriptCollapsed, setTranscriptCollapsed] =
@@ -212,6 +214,23 @@ export function App() {
           [h.component]: { state: h.state, detail: h.detail },
         })),
       ),
+      on("feed:event", ({ kind, detail }) => {
+        const text =
+          kind === "meeting:distilling"
+            ? `🧠 distilling meeting…`
+            : kind === "meeting:done"
+              ? `🧠 meeting saved to brain`
+              : kind === "project:distilling"
+                ? `🧠 summarizing ${detail}…`
+                : kind === "project:done"
+                  ? `🧠 ${detail} → brain`
+                  : kind === "error"
+                    ? `⚠ feed: ${detail}`
+                    : `🧠 ${kind}`;
+        setFeedNote(text);
+        if (feedTimer.current) window.clearTimeout(feedTimer.current);
+        feedTimer.current = window.setTimeout(() => setFeedNote(null), 6000);
+      }),
       on("cost:update", (c) => setCost(c)),
       on("meeting:paused", ({ paused }) => setPaused(paused)),
     );
@@ -316,6 +335,7 @@ export function App() {
         cost={cost ?? meeting?.cost ?? null}
         stack={stack}
         agentStatus={agentStatus}
+        feedNote={feedNote}
         onStart={start}
         onStop={stop}
         onTogglePause={async () => {

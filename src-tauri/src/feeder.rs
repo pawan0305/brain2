@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use serde_json::json;
 use tauri::{AppHandle, Emitter};
@@ -118,14 +118,23 @@ async fn sweep_projects(app: &AppHandle) -> Result<()> {
     if repos.is_empty() {
         return Ok(());
     }
-    // Only look at commits since the last successful sweep (default: last day).
+    // Stamp the next watermark from BEFORE the sweep starts — a sweep can take
+    // minutes (per-repo distillation), and commits landing during it must not
+    // fall into a dead zone between the old and new watermark. And only advance
+    // it if EVERY repo succeeded: a failed repo has to be retried next time, not
+    // skipped forever.
+    let started = Utc::now().to_rfc3339();
     let since = settings::read_brain_feed_since().unwrap_or_else(|| "24 hours ago".to_string());
+    let mut all_ok = true;
     for repo in &repos {
         if let Err(e) = sweep_one_repo(app, repo, &since).await {
+            all_ok = false;
             tracing::warn!(?e, repo = %repo, "repo sweep failed");
         }
     }
-    let _ = settings::set_brain_feed_since(&Utc::now().to_rfc3339());
+    if all_ok {
+        let _ = settings::set_brain_feed_since(&started);
+    }
     Ok(())
 }
 
@@ -162,11 +171,16 @@ refactors, direction) — not a commit-by-commit dump. Bullets only, no preamble
 /// path runs git inside WSL). Read-only.
 async fn git_recent(repo: &str, since: &str) -> Result<String> {
     if repo.starts_with('/') {
+        // No `2>/dev/null | head` pipe: keep git's exit status visible (wsl_out
+        // turns a non-zero status into an Err), so a real git failure isn't
+        // mistaken for "no new commits" (which would wrongly advance the
+        // watermark). Truncate in Rust instead.
         let script = format!(
             "git -C '{repo}' log --since='{since}' --no-merges --date=short \
---pretty=format:'%h %ad %s' --shortstat 2>/dev/null | head -200"
+--pretty=format:'%h %ad %s' --shortstat"
         );
-        wsl_out(&script).await
+        let out = wsl_out(&script).await?;
+        Ok(out.chars().take(8000).collect())
     } else {
         let out = tokio::process::Command::new("git")
             .arg("-C")
@@ -182,6 +196,12 @@ async fn git_recent(repo: &str, since: &str) -> Result<String> {
             .output()
             .await
             .context("git log")?;
+        if !out.status.success() {
+            return Err(anyhow!(
+                "git log failed for {repo}: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
         Ok(String::from_utf8_lossy(&out.stdout).chars().take(8000).collect())
     }
 }
@@ -212,6 +232,13 @@ async fn wsl_out(script: &str) -> Result<String> {
         .output()
         .await
         .context("wsl command")?;
+    if !out.status.success() {
+        return Err(anyhow!(
+            "wsl command failed ({}): {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
@@ -242,7 +269,7 @@ fn append_or_create_note(rel: &Path, name: &str, entry: &str) -> Result<()> {
 fn to_wsl_path(p: &Path) -> String {
     let s = p.to_string_lossy().replace('\\', "/");
     let b = s.as_bytes();
-    if b.len() >= 3 && b[0].is_ascii_alphabetic() && &s[1..3] == ":/" {
+    if b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && b[2] == b'/' {
         let drive = (b[0] as char).to_ascii_lowercase();
         return format!("/mnt/{}{}", drive, &s[2..]);
     }
@@ -270,5 +297,10 @@ fn slugify(s: &str) -> String {
             prev_dash = true;
         }
     }
-    out.trim_matches('-').to_string()
+    let s = out.trim_matches('-').to_string();
+    if s.is_empty() {
+        "untitled".to_string()
+    } else {
+        s
+    }
 }

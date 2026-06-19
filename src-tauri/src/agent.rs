@@ -107,7 +107,7 @@ fn gbrain_mcp_config() -> Option<PathBuf> {
 /// deliberately NOT delete_page/purge — an unattended chat shouldn't destroy
 /// pages.
 const GBRAIN_MCP_TOOLS: &str =
-    "mcp__gbrain__query mcp__gbrain__search mcp__gbrain__get_page mcp__gbrain__list_pages mcp__gbrain__put_page";
+    "mcp__gbrain__query,mcp__gbrain__search,mcp__gbrain__get_page,mcp__gbrain__list_pages,mcp__gbrain__put_page";
 
 /// Write the default persona to the user-editable location on first run, so it
 /// is discoverable and editable. Called once at startup.
@@ -380,10 +380,10 @@ async fn hermes(prompt: &str, cwd: Option<&Path>) -> Result<String> {
     let (provider, model) = settings::read_hermes_config();
     let mut script = String::from("hermes -z \"$BRAIN2_PROMPT\" --cli");
     if !provider.trim().is_empty() {
-        script.push_str(&format!(" --provider {}", provider.trim()));
+        script.push_str(&format!(" --provider {}", shell_quote(provider.trim())));
     }
     if !model.trim().is_empty() {
-        script.push_str(&format!(" -m {}", model.trim()));
+        script.push_str(&format!(" -m {}", shell_quote(model.trim())));
     }
     if cwd.is_some() {
         // Unattended file edits in the workspace.
@@ -419,9 +419,11 @@ async fn hermes(prompt: &str, cwd: Option<&Path>) -> Result<String> {
 /// Convert a Windows path (`C:\Users\…`) to its WSL mount (`/mnt/c/Users/…`).
 fn to_wsl_path(p: &Path) -> String {
     let s = p.to_string_lossy().replace('\\', "/");
-    let bytes = s.as_bytes();
-    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && &s[1..3.min(s.len())] == ":/" {
-        let drive = (bytes[0] as char).to_ascii_lowercase();
+    let b = s.as_bytes();
+    // Byte comparison (not slicing) — avoids a panic if a non-drive path begins
+    // with an ASCII letter followed by a multi-byte char.
+    if b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && b[2] == b'/' {
+        let drive = (b[0] as char).to_ascii_lowercase();
         return format!("/mnt/{}{}", drive, &s[2..]);
     }
     s

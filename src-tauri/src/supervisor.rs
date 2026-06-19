@@ -104,7 +104,9 @@ async fn check_ollama(app: &AppHandle) {
 }
 
 async fn check_gbrain(app: &AppHandle) {
-    let script = format!("{GBRAIN_PATH} gbrain health 2>&1 | head -1");
+    // 2>/dev/null (not 2>&1): keep stderr noise from shadowing the real first
+    // stdout line ("Health score: …"), which would read as a false "down".
+    let script = format!("{GBRAIN_PATH} gbrain health 2>/dev/null | head -1");
     let out = tokio::process::Command::new("wsl")
         .arg("--")
         .arg("bash")
