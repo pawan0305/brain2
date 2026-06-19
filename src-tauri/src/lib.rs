@@ -5,6 +5,7 @@ mod brain;
 mod commands;
 mod deepgram;
 mod factory;
+mod feeder;
 mod forge;
 mod gbrain;
 mod llm;
@@ -116,6 +117,10 @@ pub fn run() {
             // the 2nd brain runs on — WSL, Ollama, gbrain — and report health.
             crate::supervisor::spawn_check(app_handle.clone());
 
+            // Brain feeder: periodically distill recent project work into gbrain
+            // (meetings are distilled on meeting-end). No-op while disabled.
+            crate::feeder::spawn_project_sweep(app_handle.clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -177,6 +182,9 @@ pub fn run() {
             commands::set_hermes_config,
             commands::set_claude_model,
             commands::warm_agent,
+            // Brain feeder
+            commands::set_brain_feed_enabled,
+            commands::set_brain_feed_repos,
             // Local STT
             commands::set_stt_backend,
             commands::set_whisper_model,

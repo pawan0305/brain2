@@ -102,6 +102,26 @@ pub struct ApiKeys {
     /// models.rs, e.g. "large-v3-q5_0").
     #[serde(default = "default_whisper_model")]
     pub whisper_model: String,
+    /// Brain feeder — the continuous gbrain populator. When on, finished
+    /// meetings and recent project work are distilled into the Knowledge folder
+    /// and imported into gbrain. The user's master pause switch for the
+    /// always-on 2nd-brain firehose.
+    #[serde(default = "default_brain_feed_enabled")]
+    pub brain_feed_enabled: bool,
+    /// Repos the project-work feed watches (read-only). Windows paths (C:\…) or
+    /// WSL paths (/home/…). Empty disables the project sweep.
+    #[serde(default = "default_brain_feed_repos")]
+    pub brain_feed_repos: Vec<String>,
+    /// How often (minutes) the project-work sweep runs while the app is open.
+    #[serde(default = "default_brain_feed_interval")]
+    pub brain_feed_interval_mins: u64,
+    /// RFC3339 timestamp of the last successful project sweep, so each run only
+    /// looks at commits since then.
+    #[serde(default)]
+    pub brain_feed_since: Option<String>,
+    /// The Knowledge folder gbrain imports from — where distilled notes land.
+    #[serde(default = "default_knowledge_dir")]
+    pub knowledge_dir: String,
 }
 
 impl Default for ApiKeys {
@@ -131,6 +151,11 @@ impl Default for ApiKeys {
             claude_model: default_claude_model(),
             stt_backend: default_stt_backend(),
             whisper_model: default_whisper_model(),
+            brain_feed_enabled: default_brain_feed_enabled(),
+            brain_feed_repos: default_brain_feed_repos(),
+            brain_feed_interval_mins: default_brain_feed_interval(),
+            brain_feed_since: None,
+            knowledge_dir: default_knowledge_dir(),
         }
     }
 }
@@ -147,6 +172,18 @@ fn default_agent_backend() -> String { "direct".to_string() }
 fn default_claude_model() -> String { "haiku".to_string() }
 fn default_stt_backend() -> String { "deepgram".to_string() }
 fn default_whisper_model() -> String { "large-v3-q5_0".to_string() }
+fn default_brain_feed_enabled() -> bool { true }
+fn default_brain_feed_interval() -> u64 { 120 }
+fn default_knowledge_dir() -> String {
+    r"C:\Users\venkap\OneDrive - ICT Group\Knowledge".to_string()
+}
+/// The user's confirmed project-work watch-set (editable in Settings).
+fn default_brain_feed_repos() -> Vec<String> {
+    vec![
+        r"C:\Users\venkap\projects\Brain2".to_string(),
+        "/home/venkap/ai-factory".to_string(),
+    ]
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsView {
@@ -170,6 +207,10 @@ pub struct SettingsView {
     pub claude_model: String,
     pub stt_backend: String,
     pub whisper_model: String,
+    pub brain_feed_enabled: bool,
+    pub brain_feed_repos: Vec<String>,
+    pub brain_feed_interval_mins: u64,
+    pub knowledge_dir: String,
 }
 
 /// %APPDATA%\com.brain2.app\keys.json — the same directory Tauri's
@@ -221,7 +262,55 @@ pub fn settings_view() -> Result<SettingsView> {
         claude_model: keys.claude_model.clone(),
         stt_backend: keys.stt_backend.clone(),
         whisper_model: keys.whisper_model.clone(),
+        brain_feed_enabled: keys.brain_feed_enabled,
+        brain_feed_repos: keys.brain_feed_repos.clone(),
+        brain_feed_interval_mins: keys.brain_feed_interval_mins,
+        knowledge_dir: keys.knowledge_dir.clone(),
     })
+}
+
+pub fn read_brain_feed_enabled() -> bool {
+    read_keys().map(|k| k.brain_feed_enabled).unwrap_or(true)
+}
+
+pub fn set_brain_feed_enabled(on: bool) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    keys.brain_feed_enabled = on;
+    write_keys_back(&keys)
+}
+
+pub fn read_brain_feed_repos() -> Vec<String> {
+    read_keys().map(|k| k.brain_feed_repos).unwrap_or_default()
+}
+
+pub fn set_brain_feed_repos(repos: Vec<String>) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    keys.brain_feed_repos = repos
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    write_keys_back(&keys)
+}
+
+pub fn read_brain_feed_interval_mins() -> u64 {
+    read_keys().map(|k| k.brain_feed_interval_mins).unwrap_or(120)
+}
+
+pub fn read_knowledge_dir() -> String {
+    read_keys()
+        .map(|k| k.knowledge_dir)
+        .unwrap_or_else(|_| default_knowledge_dir())
+}
+
+pub fn read_brain_feed_since() -> Option<String> {
+    read_keys().ok().and_then(|k| k.brain_feed_since)
+}
+
+pub fn set_brain_feed_since(ts: &str) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    keys.brain_feed_since = Some(ts.to_string());
+    write_keys_back(&keys)
 }
 
 pub fn read_stt_backend() -> String {

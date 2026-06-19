@@ -362,6 +362,13 @@ export function App() {
             pushError(`overlay lock: ${err}`);
           }
         }}
+        onToggleFeed={async () => {
+          try {
+            setSettings(await api.setBrainFeedEnabled(!(settings?.brain_feed_enabled ?? true)));
+          } catch (err) {
+            pushError(`brain feed: ${err}`);
+          }
+        }}
         settings={settings}
       />
       <ResizableMain

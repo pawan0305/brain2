@@ -21,6 +21,7 @@ interface Props {
   onCycleOverlay: () => void;
   onChangeOverlayFontSize: (delta: number) => void;
   onToggleOverlayLocked: () => void;
+  onToggleFeed?: () => void;
 }
 
 /// Deepgram nova-3 streaming ≈ $0.0043 / minute. Haiku 4.5 ≈ $1/Mtok in,
@@ -118,6 +119,7 @@ export function TopBar({
   onCycleOverlay,
   onChangeOverlayFontSize,
   onToggleOverlayLocked,
+  onToggleFeed,
 }: Props) {
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
 
@@ -132,6 +134,19 @@ export function TopBar({
       <div className="topbar-left">
         <span className="brand">Brain2</span>
         <StackStrip stack={stack} agentStatus={agentStatus} />
+        {settings && (
+          <button
+            className={`ghost feed-toggle ${settings.brain_feed_enabled ? "on" : "muted"}`}
+            onClick={onToggleFeed}
+            title={
+              settings.brain_feed_enabled
+                ? "Brain feed ON — finished meetings + project work are distilled into your gbrain. Click to pause."
+                : "Brain feed OFF — click to resume populating your 2nd brain."
+            }
+          >
+            🧠 Feed: {settings.brain_feed_enabled ? "on" : "off"}
+          </button>
+        )}
         {meeting ? (
           editingTitle !== null ? (
             <input

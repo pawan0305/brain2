@@ -187,6 +187,7 @@ button.ghost.danger { color: var(--danger); }
 .stack-pill.starting .dot { background: var(--accent); animation: agent-pulse 1.2s ease-in-out infinite; }
 .stack-pill.down .dot { background: var(--danger); }
 .stack-pill.idle .dot { background: var(--border); }
+.feed-toggle.on { color: var(--accent-2); }
 .download-toast {
   margin-top: 6px;
   padding: 6px 10px;

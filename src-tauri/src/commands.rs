@@ -316,6 +316,21 @@ pub async fn warm_agent(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Master switch for the brain feeder — the continuous gbrain populator
+/// (meeting + project-work distillation). The user's pause control.
+#[tauri::command]
+pub async fn set_brain_feed_enabled(enabled: bool) -> Result<SettingsView, String> {
+    settings::set_brain_feed_enabled(enabled).map_err(|e| e.to_string())?;
+    settings::settings_view().map_err(|e| e.to_string())
+}
+
+/// Set the repos the project-work feed watches (read-only on them).
+#[tauri::command]
+pub async fn set_brain_feed_repos(repos: Vec<String>) -> Result<SettingsView, String> {
+    settings::set_brain_feed_repos(repos).map_err(|e| e.to_string())?;
+    settings::settings_view().map_err(|e| e.to_string())
+}
+
 /// Configure the Hermes backend's provider/model — the knob for pointing
 /// Brain2's brain at a local LLM (e.g. provider "ollama"). A field passed as
 /// None is left unchanged.
@@ -1400,6 +1415,17 @@ async fn run_meeting(
     let dir = state.meetings_dir();
     let _ = tokio::task::spawn_blocking(move || storage::save_meeting(&dir, &snap)).await;
     state.emit("meeting:stopped", meeting.read().clone());
+
+    // Brain feeder: distill this finished meeting into a Knowledge note and
+    // import it into gbrain, so the 2nd brain remembers what was discussed.
+    // Best-effort + gated behind brain_feed_enabled inside distill_meeting.
+    {
+        let app = state.app_handle.clone();
+        let snap = meeting.read().clone();
+        tokio::spawn(async move {
+            crate::feeder::distill_meeting(app, snap).await;
+        });
+    }
 
     // Best-effort telemetry to the AI Factory. Non-blocking: if the factory
     // isn't running on :3737 the send just fails quietly.

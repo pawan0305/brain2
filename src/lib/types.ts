@@ -57,6 +57,10 @@ export interface SettingsView {
   claude_model: string;
   stt_backend: string; // "deepgram" | "local_whisper"
   whisper_model: string;
+  brain_feed_enabled: boolean;
+  brain_feed_repos: string[];
+  brain_feed_interval_mins: number;
+  knowledge_dir: string;
 }
 
 export interface MeetingSummaryRow {
