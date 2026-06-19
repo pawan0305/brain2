@@ -54,7 +54,7 @@ pub fn spawn_check(app: AppHandle) {
 }
 
 async fn check_wsl(app: &AppHandle) {
-    let out = tokio::process::Command::new("wsl")
+    let out = crate::proc::command("wsl")
         .arg("--")
         .arg("bash")
         .arg("-lc")
@@ -87,7 +87,7 @@ async fn check_ollama(app: &AppHandle) {
     // Down — try to start it (detached, fire-and-forget; Ollama is designed to
     // run as a long-lived server, so we deliberately don't track/kill it).
     emit(app, "ollama", "starting", "launching Ollama…");
-    let _ = tokio::process::Command::new("ollama")
+    let _ = crate::proc::command("ollama")
         .arg("serve")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -107,7 +107,7 @@ async fn check_gbrain(app: &AppHandle) {
     // 2>/dev/null (not 2>&1): keep stderr noise from shadowing the real first
     // stdout line ("Health score: …"), which would read as a false "down".
     let script = format!("{GBRAIN_PATH} gbrain health 2>/dev/null | head -1");
-    let out = tokio::process::Command::new("wsl")
+    let out = crate::proc::command("wsl")
         .arg("--")
         .arg("bash")
         .arg("-lc")

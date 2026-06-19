@@ -13,6 +13,7 @@ mod llm;
 mod local_stt;
 mod models;
 mod openai;
+mod proc;
 mod settings;
 mod state;
 mod storage;
@@ -64,10 +65,19 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle().clone();
+
+            // Recover settings/keys from the pre-rebrand folder if needed, so
+            // the OneTrueDutchie → Brain2 rename doesn't lose the user's keys.
+            settings::migrate_legacy_keys();
+
+            // Don't `.expect()` here — a panic in setup() aborts before the
+            // managed state is registered, after which EVERY stateful command
+            // (brain_status, current_meeting, …) fails with "state not managed
+            // … before using this command". Degrade gracefully instead.
             let data_dir = app
                 .path()
                 .app_data_dir()
-                .expect("could not resolve app data dir");
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
             std::fs::create_dir_all(&data_dir).ok();
 
             // Seed the shared agent persona (agent-prompts/BRAIN2.md) to disk so

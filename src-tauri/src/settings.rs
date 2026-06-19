@@ -218,9 +218,34 @@ pub struct SettingsView {
 /// `meetings\` folder.
 fn keys_path() -> PathBuf {
     let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
+    PathBuf::from(base).join("com.brain2.app").join("keys.json")
+}
+
+/// Pre-rebrand keys location. Settings used to live here under the old
+/// "OneTrueDutchie" identifier; [`migrate_legacy_keys`] moves them once.
+fn legacy_keys_path() -> PathBuf {
+    let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
     PathBuf::from(base)
         .join("com.onetruedutchie.app")
         .join("keys.json")
+}
+
+/// One-time migration: if keys don't yet exist at the current
+/// `com.brain2.app` location but do at the legacy `com.onetruedutchie.app`
+/// one, copy them over — so the rebrand doesn't silently wipe the user's API
+/// keys + settings. Safe to call on every startup (no-op once migrated).
+pub fn migrate_legacy_keys() {
+    let new = keys_path();
+    if new.exists() {
+        return;
+    }
+    let old = legacy_keys_path();
+    if old.exists() {
+        if let Some(dir) = new.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        let _ = fs::copy(&old, &new);
+    }
 }
 
 pub fn read_keys() -> Result<ApiKeys> {

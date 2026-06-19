@@ -361,14 +361,14 @@ fn claude_base_command() -> Command {
     // The npm global `claude` is a .cmd/.ps1 shim (not a PE exe), so it must be
     // launched through cmd.exe. The prompt rides on stdin, so the only thing
     // cmd parses here are static, space-free flags.
-    let mut c = Command::new("cmd");
+    let mut c = crate::proc::command("cmd");
     c.arg("/C").arg("claude");
     c
 }
 
 #[cfg(not(windows))]
 fn claude_base_command() -> Command {
-    Command::new("claude")
+    crate::proc::command("claude")
 }
 
 // ── Hermes (`hermes -z`) via WSL ─────────────
@@ -396,7 +396,7 @@ async fn hermes(prompt: &str, cwd: Option<&Path>) -> Result<String> {
         script
     };
 
-    let mut cmd = Command::new("wsl");
+    let mut cmd = crate::proc::command("wsl");
     cmd.arg("--").arg("bash").arg("-lc").arg(full);
     cmd.env("BRAIN2_PROMPT", prompt);
     cmd.env("WSLENV", "BRAIN2_PROMPT/u");

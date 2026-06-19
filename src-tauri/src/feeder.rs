@@ -183,7 +183,7 @@ async fn git_recent(repo: &str, since: &str) -> Result<String> {
         let out = wsl_out(&script).await?;
         Ok(out.chars().take(8000).collect())
     } else {
-        let out = tokio::process::Command::new("git")
+        let out = crate::proc::command("git")
             .arg("-C")
             .arg(repo)
             .arg("log")
@@ -233,7 +233,7 @@ gbrain embed --stale >/dev/null 2>&1; echo ok"
 }
 
 async fn wsl_out(script: &str) -> Result<String> {
-    let out = tokio::process::Command::new("wsl")
+    let out = crate::proc::command("wsl")
         .arg("--")
         .arg("bash")
         .arg("-lc")

@@ -289,7 +289,7 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Settings</h2>
         <p className="muted">
-          API keys live in <code>%APPDATA%\com.onetruedutchie.app</code>; nothing
+          API keys live in <code>%APPDATA%\com.brain2.app</code>; nothing
           leaves your machine except provider API requests.
         </p>
 

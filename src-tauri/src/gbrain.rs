@@ -15,7 +15,6 @@
 use std::process::Stdio;
 
 use anyhow::{anyhow, Context, Result};
-use tokio::process::Command;
 
 /// One WSL round-trip: run a hybrid search for the question, print the top hits
 /// (slug + snippet), then pull the full markdown of the strongest few pages.
@@ -48,7 +47,7 @@ pub async fn retrieve(question: &str) -> Result<String> {
 }
 
 async fn wsl(script: &str, env: (&str, &str)) -> Result<String> {
-    let mut cmd = Command::new("wsl");
+    let mut cmd = crate::proc::command("wsl");
     cmd.arg("--").arg("bash").arg("-lc").arg(script);
     cmd.env(env.0, env.1);
     cmd.env("WSLENV", format!("{}/u", env.0));

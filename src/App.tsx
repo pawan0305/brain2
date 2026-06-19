@@ -6,7 +6,6 @@ import { TranscriptPane } from "./components/TranscriptPane";
 import { SummaryPane } from "./components/SummaryPane";
 import { ChatPane } from "./components/ChatPane";
 import { NotesPane } from "./components/NotesPane";
-import { ForgePane } from "./components/ForgePane";
 import { BrainPane } from "./components/BrainPane";
 import { SettingsModal } from "./components/SettingsModal";
 import { HistoryDrawer } from "./components/HistoryDrawer";
@@ -67,8 +66,6 @@ export function App() {
     usePersistedBool("paneCollapsed.chat", false);
   const [notesCollapsed, setNotesCollapsed] =
     usePersistedBool("paneCollapsed.notes", true);
-  const [forgeCollapsed, setForgeCollapsed] =
-    usePersistedBool("paneCollapsed.forge", false);
   const [brainCollapsed, setBrainCollapsed] =
     usePersistedBool("paneCollapsed.brain", true);
 
@@ -465,17 +462,6 @@ export function App() {
                 meeting={meeting}
                 onError={pushError}
                 onCollapse={() => setBrainCollapsed(true)}
-              />
-            ),
-          },
-          {
-            id: "forge",
-            title: "Forge",
-            collapsed: forgeCollapsed,
-            onToggle: () => setForgeCollapsed(!forgeCollapsed),
-            content: (
-              <ForgePane
-                onCollapse={() => setForgeCollapsed(true)}
               />
             ),
           },
