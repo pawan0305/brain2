@@ -54,7 +54,7 @@ function StackPill({
   );
 }
 
-/** The cockpit health strip: WSL · Ollama · gbrain · Claude. */
+/** The cockpit health strip: Knowledge · WSL · Ollama · Claude. */
 function StackStrip({
   stack,
   agentStatus,
@@ -78,12 +78,12 @@ function StackStrip({
     stack[key] ? { state: stack[key].state, detail: stack[key].detail } : { state: "idle", detail: "checking…" };
   const wsl = cell("wsl");
   const ollama = cell("ollama");
-  const gbrain = cell("gbrain");
+  const knowledge = cell("knowledge");
   return (
     <div className="stack-strip" title="Local 2nd-brain stack">
+      <StackPill label="Knowledge" state={knowledge.state} detail={knowledge.detail} />
       <StackPill label="WSL" state={wsl.state} detail={wsl.detail} />
       <StackPill label="Ollama" state={ollama.state} detail={ollama.detail} />
-      <StackPill label="gbrain" state={gbrain.state} detail={gbrain.detail} />
       <StackPill label="Claude" state={claude} detail={claudeDetail} />
     </div>
   );
@@ -142,7 +142,7 @@ export function TopBar({
             onClick={onToggleFeed}
             title={
               settings.brain_feed_enabled
-                ? "Brain feed ON — finished meetings + project work are distilled into your gbrain. Click to pause."
+                ? "Brain feed ON — finished meetings + project work are distilled into your Knowledge folder. Click to pause."
                 : "Brain feed OFF — click to resume populating your 2nd brain."
             }
           >

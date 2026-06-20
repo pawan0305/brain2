@@ -6,7 +6,7 @@ Brain2 captures your meetings (Teams, Zoom, browser), transcribes in real time v
 
 - **⚒️ Forge** — a self-modifying agent that can improve its own source code, rebuild itself, and self-update
 - **🧠 Brain Engine** — detects action items, logs decisions, recalls context from past meetings, generates wrap-ups
-- **🏭 AI Factory Connector** — reports metrics to the AI Factory, receives factory-built updates
+- **📚 Knowledge Search** — lean agentic search of your Knowledge folder (no embedding server, no database)
 
 Originally built as "OneTrueDutchie" — a Dutch→English meeting translator. Now Brain2 works with any language Deepgram can recognize.
 
@@ -62,14 +62,9 @@ While you're in a meeting, Brain2's engine works in the background:
 - **Recalls context** — "We discussed this with Martijn last Tuesday" → surfaces relevant history
 - **Generates wrap-ups** — consolidates actions, decisions, and next steps
 
-### AI Factory Connector
+### Knowledge Search — lean agentic retrieval
 
-Brain2 reports back to the AI Factory:
-
-- Usage metrics (meeting count, audio hours, costs)
-- Error patterns for analysis
-- Improvement ideas for the Cerberus crew
-- Checks for factory-built updates
+When you "Ask the meeting," Brain2 searches your Knowledge folder (a collection of markdown files on disk) using fast keyword matching. No embedding server, no database, no sync cron — the LLM does the semantic understanding, the search just finds the right files. Files are immediately searchable the moment they're written.
 
 ## Architecture
 
@@ -83,8 +78,22 @@ Brain2 (Tauri 2, portable .exe)
 │                            NotesPane, ForgePane, SettingsModal
 ├── Forge engine           — self-modifying agent (Git + Claude + cargo)
 ├── Brain engine           — action detection, decision logging, memory
-└── Factory connector      — metrics, updates, idea pipeline
+├── Knowledge search       — keyword search of markdown files (no DB)
+└── Feeder                 — distills meetings + project work into Knowledge
 ```
+
+## Agent Backends
+
+Brain2's reasoning (Brain engine + Forge + Ask the meeting) can be driven by:
+
+| Backend | Description | Requires |
+|---------|-------------|----------|
+| **Direct** | Anthropic Haiku API call (default, fastest) | Anthropic API key |
+| **Claude Code** | Claude Code CLI — real agent with file tools | Claude Code installed |
+| **Hermes** | Hermes agent in WSL — local-LLM capable | WSL + Hermes installed |
+
+All backends share the same persona (`agent-prompts/BRAIN2.md`) and the same
+knowledge search. The harness is swappable — one shared brain, three ways to run it.
 
 ## Configuration
 
@@ -95,6 +104,7 @@ All configuration is in-app via **Settings** (gear icon) and is stored in
 - **STT engine** — Deepgram (cloud) or local Whisper (on-device, Vulkan).
 - **LLM provider** — Anthropic, or any OpenAI-compatible endpoint (Ollama, etc.).
 - **Brain2 agent backend** — Direct, Claude Code, or Hermes.
+- **Knowledge folder** — where your markdown notes live (default: OneDrive Knowledge folder).
 - **Languages** — source + target, custom vocabulary, subtitles overlay.
 
 See [RELEASES.md](RELEASES.md) for prebuilt downloads.

@@ -110,11 +110,13 @@ export const api = {
     invoke<SettingsView>("set_whisper_model", { model }),
   downloadModel: (name: string) => invoke<string>("download_model", { name }),
   listLocalModels: () => invoke<LocalModelInfo[]>("list_local_models"),
-  // Brain feeder — the continuous gbrain populator (meetings + project work).
+  // Brain feeder — continuous knowledge populator (meetings + project work).
   setBrainFeedEnabled: (enabled: boolean) =>
     invoke<SettingsView>("set_brain_feed_enabled", { enabled }),
   setBrainFeedRepos: (repos: string[]) =>
     invoke<SettingsView>("set_brain_feed_repos", { repos }),
+  setKnowledgeDir: (dir: string) =>
+    invoke<SettingsView>("set_knowledge_dir", { dir }),
 };
 
 export type EventHandlers = {

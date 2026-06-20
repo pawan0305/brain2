@@ -102,9 +102,9 @@ pub struct ApiKeys {
     /// models.rs, e.g. "large-v3-q5_0").
     #[serde(default = "default_whisper_model")]
     pub whisper_model: String,
-    /// Brain feeder — the continuous gbrain populator. When on, finished
-    /// meetings and recent project work are distilled into the Knowledge folder
-    /// and imported into gbrain. The user's master pause switch for the
+    /// Brain feeder — the continuous knowledge populator. When on, finished
+    /// meetings and recent project work are distilled into markdown notes
+    /// in the Knowledge folder. The user's master pause switch for the
     /// always-on 2nd-brain firehose.
     #[serde(default = "default_brain_feed_enabled")]
     pub brain_feed_enabled: bool,
@@ -119,7 +119,8 @@ pub struct ApiKeys {
     /// looks at commits since then.
     #[serde(default)]
     pub brain_feed_since: Option<String>,
-    /// The Knowledge folder gbrain imports from — where distilled notes land.
+    /// The Knowledge folder where distilled notes land — searched on demand
+    /// by the lean knowledge retriever (keyword match, no database).
     #[serde(default = "default_knowledge_dir")]
     pub knowledge_dir: String,
 }
@@ -326,6 +327,12 @@ pub fn read_knowledge_dir() -> String {
     read_keys()
         .map(|k| k.knowledge_dir)
         .unwrap_or_else(|_| default_knowledge_dir())
+}
+
+pub fn set_knowledge_dir(dir: &str) -> Result<()> {
+    let mut keys = read_keys().unwrap_or_default();
+    keys.knowledge_dir = dir.trim().to_string();
+    write_keys_back(&keys)
 }
 
 pub fn read_brain_feed_since() -> Option<String> {

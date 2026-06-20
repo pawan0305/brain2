@@ -316,7 +316,7 @@ pub async fn warm_agent(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Master switch for the brain feeder — the continuous gbrain populator
+/// Master switch for the brain feeder — the continuous knowledge populator
 /// (meeting + project-work distillation). The user's pause control.
 #[tauri::command]
 pub async fn set_brain_feed_enabled(enabled: bool) -> Result<SettingsView, String> {
@@ -328,6 +328,14 @@ pub async fn set_brain_feed_enabled(enabled: bool) -> Result<SettingsView, Strin
 #[tauri::command]
 pub async fn set_brain_feed_repos(repos: Vec<String>) -> Result<SettingsView, String> {
     settings::set_brain_feed_repos(repos).map_err(|e| e.to_string())?;
+    settings::settings_view().map_err(|e| e.to_string())
+}
+
+/// Set the Knowledge folder path — where distilled notes land and where the
+/// keyword search looks for long-term context.
+#[tauri::command]
+pub async fn set_knowledge_dir(dir: String) -> Result<SettingsView, String> {
+    settings::set_knowledge_dir(&dir).map_err(|e| e.to_string())?;
     settings::settings_view().map_err(|e| e.to_string())
 }
 
@@ -1441,8 +1449,8 @@ async fn run_meeting(
     let _ = tokio::task::spawn_blocking(move || storage::save_meeting(&dir, &snap)).await;
     state.emit("meeting:stopped", meeting.read().clone());
 
-    // Brain feeder: distill this finished meeting into a Knowledge note and
-    // import it into gbrain, so the 2nd brain remembers what was discussed.
+    // Brain feeder: distill this finished meeting into a Knowledge note,
+    // so the 2nd brain remembers what was discussed.
     // Best-effort + gated behind brain_feed_enabled inside distill_meeting.
     {
         let app = state.app_handle.clone();

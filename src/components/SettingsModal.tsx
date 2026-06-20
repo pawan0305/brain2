@@ -642,6 +642,35 @@ export function SettingsModal({ settings, onSave, onSettingsChanged, onClose, on
           </div>
         </label>
 
+        <label>
+          <span>
+            Knowledge folder
+            <em className="muted"> (where your 2nd-brain notes live)</em>
+          </span>
+          <input
+            type="text"
+            value={settings?.knowledge_dir ?? ""}
+            onChange={() => {
+              // Update on blur, not on every keystroke
+            }}
+            onBlur={async (e) => {
+              try {
+                const s = await api.setKnowledgeDir(e.target.value);
+                onSettingsChanged(s);
+              } catch (err) {
+                onError(`knowledge dir: ${err}`);
+              }
+            }}
+            placeholder="C:\Users\you\OneDrive\Knowledge"
+            autoComplete="off"
+          />
+          <small>
+            Markdown files here are searched by keyword when you "Ask the
+            meeting." Meeting notes and project summaries are written here
+            by the brain feeder. No database, no embedding server.
+          </small>
+        </label>
+
         <div className="modal-actions">
           <button onClick={onClose}>Close</button>
           <button className="primary" onClick={submit} disabled={saving}>

@@ -2,7 +2,7 @@
 //! window on Windows.
 //!
 //! Brain2 shells out to `wsl`, `cmd`/`claude`, `git`, and `ollama` constantly
-//! (supervisor probes, gbrain retrieval, the brain feeder, the agent). Spawned
+//! (supervisor probes, knowledge retrieval, the brain feeder, the agent). Spawned
 //! from a GUI app on Windows, each of those pops a black console window for a
 //! moment — which makes the app feel broken. `CREATE_NO_WINDOW` suppresses it
 //! so the subprocesses run silently in the background, as an integrated desktop

@@ -7,7 +7,7 @@ mod deepgram;
 mod factory;
 mod feeder;
 mod forge;
-mod gbrain;
+mod knowledge;
 mod llm;
 #[cfg(feature = "local-stt")]
 mod local_stt;
@@ -123,12 +123,12 @@ pub fn run() {
             // mid-meeting. No-op when the backend is Direct.
             crate::commands::spawn_warm_up(app_handle.clone());
 
-            // One-click cockpit: verify (and best-effort start) the local stack
-            // the 2nd brain runs on — WSL, Ollama, gbrain — and report health.
+            // One-click cockpit: verify the local stack the 2nd brain runs on —
+            // Knowledge folder, and (if Hermes is the backend) WSL + Ollama.
             crate::supervisor::spawn_check(app_handle.clone());
 
-            // Brain feeder: periodically distill recent project work into gbrain
-            // (meetings are distilled on meeting-end). No-op while disabled.
+            // Brain feeder: periodically distill recent project work into the
+            // Knowledge folder (meetings are distilled on meeting-end). No-op while disabled.
             crate::feeder::spawn_project_sweep(app_handle.clone());
 
             Ok(())
@@ -195,6 +195,7 @@ pub fn run() {
             // Brain feeder
             commands::set_brain_feed_enabled,
             commands::set_brain_feed_repos,
+            commands::set_knowledge_dir,
             // Local STT
             commands::set_stt_backend,
             commands::set_whisper_model,

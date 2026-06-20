@@ -1,4 +1,4 @@
-//! The brain feeder — Brain2's continuous gbrain populator.
+//! The brain feeder — Brain2's continuous knowledge populator.
 //!
 //! Turns "what the user has been doing" into knowledge the 2nd brain can recall:
 //!  - **Meetings** — when a meeting ends, distill its transcript + summary into
@@ -6,18 +6,18 @@
 //!  - **Project work** — on an interval, summarize recent git activity in the
 //!    watched repos (Brain2, AI Factory, …).
 //!
-//! Both are written into the user's Knowledge folder and then `gbrain import`ed
-//! so they're searchable within seconds, not just at the next 30-min sync. The
-//! distilling engine is the selected agent backend (Claude — see [[agent]]).
+//! Both are written into the user's Knowledge folder as markdown files — they're
+//! immediately searchable via the keyword search in [[knowledge]]. No embedding
+//! server, no import step, no database. The distilling engine is the selected
+//! agent backend (Claude Code / Hermes / Direct — see [[agent]]).
 //! Everything is gated behind `brain_feed_enabled` + the repo watch-list, so the
 //! always-on firehose stays under the user's control.
 //!
-//! ⚠️ Privacy: the user chose Claude Code as the distiller knowing this streams
-//! meeting + project activity (often corporate) to Anthropic on a schedule.
+//! ⚠️ Privacy: the user chose the agent backend knowing this streams
+//! meeting + project activity (often corporate) to the LLM provider on a schedule.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
@@ -29,8 +29,6 @@ use crate::agent;
 use crate::settings;
 use crate::state::Meeting;
 
-const GBRAIN_PATH: &str = "export PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin;";
-
 fn knowledge_dir() -> PathBuf {
     PathBuf::from(settings::read_knowledge_dir())
 }
@@ -41,7 +39,7 @@ fn emit_feed(app: &AppHandle, kind: &str, detail: impl Into<String>) {
 
 // ── Meetings ─────────────────────────────────
 
-/// Distill a finished meeting into a Knowledge note + import it. Best-effort.
+/// Distill a finished meeting into a Knowledge note. Best-effort.
 pub async fn distill_meeting(app: AppHandle, meeting: Meeting) {
     if !settings::read_brain_feed_enabled() {
         return;
@@ -91,7 +89,7 @@ User notes:\n{notes}\n\nTranscript (source language):\n{transcript}",
         body = body.trim(),
     );
     write_note(&PathBuf::from("meetings").join(format!("{slug}.md")), &md)?;
-    import_into_gbrain().await?;
+    // No import step needed — files are immediately searchable via keyword search.
     Ok(slug)
 }
 
@@ -163,7 +161,7 @@ refactors, direction) — not a commit-by-commit dump. Bullets only, no preamble
         &name,
         &entry,
     )?;
-    import_into_gbrain().await?;
+    // No import step needed — files are immediately searchable via keyword search.
     emit_feed(app, "project:done", name);
     Ok(true)
 }
@@ -172,10 +170,6 @@ refactors, direction) — not a commit-by-commit dump. Bullets only, no preamble
 /// path runs git inside WSL). Read-only.
 async fn git_recent(repo: &str, since: &str) -> Result<String> {
     if repo.starts_with('/') {
-        // No `2>/dev/null | head` pipe: keep git's exit status visible (wsl_out
-        // turns a non-zero status into an Err), so a real git failure isn't
-        // mistaken for "no new commits" (which would wrongly advance the
-        // watermark). Truncate in Rust instead.
         let script = format!(
             "git -C '{repo}' log --since='{since}' --no-merges --date=short \
 --pretty=format:'%h %ad %s' --shortstat"
@@ -207,30 +201,7 @@ async fn git_recent(repo: &str, since: &str) -> Result<String> {
     }
 }
 
-// ── gbrain + file helpers ────────────────────
-
-/// Serializes feeder-side gbrain imports within the process, so back-to-back
-/// meetings and the project sweep don't fire redundant concurrent full-folder
-/// imports. (gbrain itself tolerates concurrent imports — verified — this just
-/// avoids the wasted duplicate work.)
-static IMPORT_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-
-/// Re-import the Knowledge folder into gbrain and embed new chunks — the same
-/// incremental pair the 30-min cron runs, fired immediately so a fresh note is
-/// searchable in seconds.
-async fn import_into_gbrain() -> Result<()> {
-    let _guard = IMPORT_LOCK
-        .get_or_init(|| tokio::sync::Mutex::new(()))
-        .lock()
-        .await;
-    let wsl_kdir = to_wsl_path(&knowledge_dir());
-    let script = format!(
-        "{GBRAIN_PATH} gbrain import '{wsl_kdir}' --no-embed >/dev/null 2>&1; \
-gbrain embed --stale >/dev/null 2>&1; echo ok"
-    );
-    let _ = wsl_out(&script).await?;
-    Ok(())
-}
+// ── File helpers ─────────────────────────────
 
 async fn wsl_out(script: &str) -> Result<String> {
     let out = crate::proc::command("wsl")
